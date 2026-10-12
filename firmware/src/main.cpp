@@ -129,6 +129,7 @@ static void parse_weather(JsonDocument& doc, WeatherData* out) {
     out->is_day = doc["d"].as<bool>();
     out->hi     = doc["hi"] | 0;
     out->lo     = doc["lo"] | 0;
+    strlcpy(out->sun, doc["sun"] | "", sizeof(out->sun));
     JsonArray f = doc["f"].as<JsonArray>();
     out->n_days = 0;
     for (JsonArray day : f) {

@@ -42,6 +42,7 @@ struct WeatherData {
     int   hi, lo;            // today's range, °C
     WeatherDay days[WX_FORECAST_DAYS];
     int   n_days;
+    char  sun[16];           // next sun event, "Sunset 18:45"; empty = unknown
 };
 
 #define STOCK_MAX       5

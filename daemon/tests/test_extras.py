@@ -9,12 +9,14 @@ FIRMWARE_BUF = 512  # BLE_BUF_SIZE in firmware/src/ble.cpp
 
 def forecast_fixture():
     return {
-        "current": {"temperature_2m": 11.34, "apparent_temperature": 9.8,
-                    "weather_code": 2, "is_day": 1},
+        "current": {"time": "2026-10-12T19:00", "temperature_2m": 11.34,
+                    "apparent_temperature": 9.8, "weather_code": 2, "is_day": 1},
         "daily": {"time": ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15"],
                   "weather_code": [3, 80, 61, 0],
                   "temperature_2m_max": [13.4, 15.3, 17.8, 17.6],
-                  "temperature_2m_min": [6.7, 9.1, 12.1, -0.6]},
+                  "temperature_2m_min": [6.7, 9.1, 12.1, -0.6],
+                  "sunrise": ["2026-10-12T07:40", "2026-10-13T07:41", "2026-10-14T07:43", "2026-10-15T07:44"],
+                  "sunset": ["2026-10-12T18:45", "2026-10-13T18:43", "2026-10-14T18:41", "2026-10-15T18:39"]},
     }
 
 
@@ -32,7 +34,15 @@ def test_weather_payload():
     assert p["k"] == "wx" and p["loc"] == "Ennetmoos"          # folded to ASCII
     assert (p["t"], p["fl"], p["c"], p["d"], p["hi"], p["lo"]) == (11.3, 10, 2, 1, 13, 7)
     assert p["f"] == [["Tue", 80, 15, 9], ["Wed", 61, 18, 12], ["Thu", 0, 18, -1]]
+    assert p["sun"] == "Sunrise 07:41"                          # after today's sunset
     assert len(x.compact(p)) < FIRMWARE_BUF
+
+
+def test_next_sun_event():
+    rises, sets = ["2026-10-12T07:40", "2026-10-13T07:41"], ["2026-10-12T18:45", "2026-10-13T18:43"]
+    assert x.next_sun_event("2026-10-12T06:00", rises, sets) == "Sunrise 07:40"
+    assert x.next_sun_event("2026-10-12T12:00", rises, sets) == "Sunset 18:45"
+    assert x.next_sun_event("2026-10-14T12:00", rises, sets) == ""
 
 
 def test_stock_spec():

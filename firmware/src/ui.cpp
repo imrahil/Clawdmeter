@@ -102,6 +102,7 @@ struct Layout {
     int16_t wx_detail_y;             // feels-like / high / low line
     int16_t wx_fc_y, wx_fc_h;        // forecast tiles
     int16_t wx_fc_icon_px;           // forecast icon (drawn from the 48px art)
+    int16_t wx_fc_pad_y;             // forecast tile top/bottom padding
     const lv_font_t* wx_temp_font;
     const lv_font_t* wx_cond_font;
     const lv_font_t* wx_detail_font;
@@ -117,6 +118,10 @@ struct Layout {
     const lv_font_t* st_name_font;
     const lv_font_t* st_price_font;
     const lv_font_t* st_chg_font;
+
+    // Weather / stocks share Usage's animated status line at the bottom;
+    // their content stops this far above the bottom edge to clear it.
+    int16_t footer_reserve;
 };
 static Layout L = {};
 
@@ -170,19 +175,20 @@ static void compute_layout(const BoardCaps& c) {
         L.bt_credit_1_font = &font_styrene_24;
         L.bt_credit_2_font = &font_styrene_20;
         L.wx_icon_px = 120;
-        L.wx_main_y = 96;
-        L.wx_cond_y = 226;
-        L.wx_detail_y = 264;
-        L.wx_fc_y = 312;
-        L.wx_fc_h = 130;
+        L.wx_main_y = 90;
+        L.wx_cond_y = 216;
+        L.wx_detail_y = 252;
+        L.wx_fc_y = 296;
+        L.wx_fc_h = 120;
         L.wx_fc_icon_px = 48;
+        L.wx_fc_pad_y = 8;
         L.wx_temp_font   = &font_styrene_temp_96;
         L.wx_cond_font   = &font_styrene_28;
         L.wx_detail_font = with_symbols(&font_styrene_24, &font_sym_24);
         L.wx_fc_font     = with_symbols(&font_styrene_24, &font_sym_24);
         L.st_row_h = 82;
-        L.st_row_gap = 10;
-        L.st_pad_y = 10;
+        L.st_row_gap = 8;
+        L.st_pad_y = 8;
         L.st_left_w = 140;
         L.st_spark_w = 120;
         L.st_line_w = 3;
@@ -211,6 +217,7 @@ static void compute_layout(const BoardCaps& c) {
         L.wx_fc_y = 262;
         L.wx_fc_h = 118;
         L.wx_fc_icon_px = 40;
+        L.wx_fc_pad_y = 8;
         L.wx_temp_font   = &font_styrene_temp_72;
         L.wx_cond_font   = &font_styrene_24;
         L.wx_detail_font = with_symbols(&font_styrene_20, &font_sym_20);
@@ -267,13 +274,14 @@ static void compute_layout(const BoardCaps& c) {
         L.bt_device_font   = &font_styrene_14;
         L.bt_credit_1_font = &font_styrene_12;
         L.bt_credit_2_font = &font_styrene_12;
-        L.wx_icon_px = 56;
-        L.wx_main_y = 40;
-        L.wx_cond_y = 100;
-        L.wx_detail_y = 118;
-        L.wx_fc_y = 140;
-        L.wx_fc_h = 92;
-        L.wx_fc_icon_px = 28;
+        L.wx_icon_px = 48;
+        L.wx_main_y = 38;
+        L.wx_cond_y = 88;
+        L.wx_detail_y = 105;
+        L.wx_fc_y = 124;
+        L.wx_fc_h = 80;
+        L.wx_fc_icon_px = 26;
+        L.wx_fc_pad_y = 5;
         L.wx_temp_font   = with_symbols(&font_styrene_48, &font_sym_48);
         L.wx_cond_font   = &font_styrene_14;
         L.wx_detail_font = with_symbols(&font_styrene_12, &font_sym_12);
@@ -291,6 +299,7 @@ static void compute_layout(const BoardCaps& c) {
     }
 
     L.content_w = L.scr_w - 2 * L.margin;
+    L.footer_reserve = -L.anim_y + lv_font_get_line_height(L.anim_font) + 6;
 }
 
 // Anthropic brand palette — design tokens live in theme.h
@@ -788,11 +797,23 @@ static const char* wx_text_for(int code) {
     }
 }
 
-// The art is white; the sun takes the brand accent, everything else stays ivory.
+// The art is white; every weather glyph is drawn in the brand terra-cotta,
+// the same ink as the Clawd mascot and the status line. Text stays ivory.
 static void set_wx_icon(lv_obj_t* img, const lv_image_dsc_t* dscs, int icon) {
     lv_image_set_src(img, &dscs[icon]);
-    lv_obj_set_style_image_recolor(img, icon == WX_SUN ? COL_ACCENT : COL_TEXT, 0);
+    lv_obj_set_style_image_recolor(img, COL_ACCENT, 0);
     lv_obj_set_style_image_recolor_opa(img, LV_OPA_COVER, 0);
+}
+
+// Status line at the bottom of the weather / stocks screens — same font,
+// colour and spinner as the Usage screen's, driven from ui_tick_anim().
+static lv_obj_t* make_footer(lv_obj_t* parent) {
+    lv_obj_t* f = lv_label_create(parent);
+    lv_label_set_text(f, "");
+    lv_obj_set_style_text_font(f, L.anim_font, 0);
+    lv_obj_set_style_text_color(f, COL_ACCENT, 0);
+    lv_obj_align(f, LV_ALIGN_BOTTOM_MID, 0, L.anim_y);
+    return f;
 }
 
 // Show an icon at `px`, scaling the art when the layout asks for another size.
@@ -816,6 +837,8 @@ static lv_obj_t* wx_tiles[WX_FORECAST_DAYS];
 static lv_obj_t* wx_tile_day[WX_FORECAST_DAYS];
 static lv_obj_t* wx_tile_icon[WX_FORECAST_DAYS];
 static lv_obj_t* wx_tile_temp[WX_FORECAST_DAYS];
+static lv_obj_t* wx_footer;
+static char      wx_footer_text[16];
 static bool      weather_received = false;
 static uint32_t  weather_ms = 0;
 
@@ -838,6 +861,7 @@ static void init_weather_screen(lv_obj_t* scr) {
 
     wx_icon = make_wx_icon(row, wx_big_dscs, ICON_WX_SUN_120_W, L.wx_icon_px);
     wx_temp = lv_label_create(row);
+    lv_label_set_recolor(wx_temp, true);   // the degree sign takes the accent
     lv_label_set_text(wx_temp, "-");
     lv_obj_set_style_text_font(wx_temp, L.wx_temp_font, 0);
     lv_obj_set_style_text_color(wx_temp, COL_TEXT, 0);
@@ -860,6 +884,8 @@ static void init_weather_screen(lv_obj_t* scr) {
     for (int i = 0; i < WX_FORECAST_DAYS; i++) {
         lv_obj_t* tile = make_panel(weather_container, L.margin + i * (tile_w + gap),
                                     L.wx_fc_y, tile_w, L.wx_fc_h);
+        lv_obj_set_style_pad_top(tile, L.wx_fc_pad_y, 0);
+        lv_obj_set_style_pad_bottom(tile, L.wx_fc_pad_y, 0);
         wx_tiles[i] = tile;
 
         wx_tile_day[i] = lv_label_create(tile);
@@ -879,14 +905,17 @@ static void init_weather_screen(lv_obj_t* scr) {
 
         lv_obj_add_flag(tile, LV_OBJ_FLAG_HIDDEN);
     }
+
+    wx_footer = make_footer(weather_container);
 }
 
 void ui_update_weather(const WeatherData* d) {
     char buf[64];
     set_screen_title(wx_title, d->location[0] ? d->location : "Weather");
     set_wx_icon(wx_icon, wx_big_dscs, wx_icon_for(d->code, d->is_day));
-    snprintf(buf, sizeof(buf), "%ld\xC2\xB0", lroundf(d->temp));
+    snprintf(buf, sizeof(buf), "%ld#d97757 \xC2\xB0#", lroundf(d->temp));
     lv_label_set_text(wx_temp, buf);
+    strlcpy(wx_footer_text, d->sun, sizeof(wx_footer_text));
     lv_label_set_text(wx_cond, wx_text_for(d->code));
     snprintf(buf, sizeof(buf), "Feels %d\xC2\xB0  \xC2\xB7  H %d\xC2\xB0  L %d\xC2\xB0",
              d->feels, d->hi, d->lo);
@@ -929,6 +958,7 @@ static StockRow  stock_rows[STOCK_MAX];
 static lv_obj_t* stocks_container;
 static int       stock_count = 0;      // rows the daemon says it's sending
 static uint32_t  stock_ms = 0;
+static lv_obj_t* st_footer;
 
 static void init_stocks_screen(lv_obj_t* scr) {
     stocks_container = make_screen_container(scr);
@@ -983,6 +1013,8 @@ static void init_stocks_screen(lv_obj_t* scr) {
         r->have = false;
         lv_obj_add_flag(r->panel, LV_OBJ_FLAG_HIDDEN);
     }
+
+    st_footer = make_footer(stocks_container);
 }
 
 static void format_price(char* buf, size_t len, const char* cur, float p) {
@@ -1002,7 +1034,7 @@ static void format_price(char* buf, size_t len, const char* cur, float p) {
 static void layout_stock_rows(void) {
     const int n = stock_count;
     if (n <= 0) return;
-    const int avail = L.scr_h - L.content_y - L.margin;
+    const int avail = L.scr_h - L.content_y - L.footer_reserve;
     int h = (avail - (n - 1) * L.st_row_gap) / n;
     if (h > L.st_row_h) h = L.st_row_h;
     const int inner_h = h - 2 * L.st_pad_y;
@@ -1034,7 +1066,7 @@ static void layout_stock_rows(void) {
         const bool up = pct >= 0.0f;
         snprintf(buf, sizeof(buf), "%s%.2f%%", up ? "+" : "\xE2\x88\x92", fabsf(pct));
         lv_label_set_text(r->chg, buf);
-        lv_obj_set_style_text_color(r->chg, up ? COL_GREEN : COL_RED, 0);
+        lv_obj_set_style_text_color(r->chg, up ? THEME_GAIN : THEME_LOSS, 0);
 
         // Sparkline: 0..99 → top..bottom of the plot box. Mid-session it only
         // spans the elapsed share of the trading day, so the x axis is time.
@@ -1045,7 +1077,7 @@ static void layout_stock_rows(void) {
             r->spark_pts[k].y = (99 - q->hist[k]) * (spark_h - 1) / 99;
         }
         lv_line_set_points(r->spark, r->spark_pts, pts);
-        lv_obj_set_style_line_color(r->spark, up ? COL_GREEN : COL_RED, 0);
+        lv_obj_set_style_line_color(r->spark, COL_ACCENT, 0);   // the change % carries up/down
         lv_obj_set_pos(r->spark, spark_x, spark_y);
 
         const int by = (99 - q->baseline) * (spark_h - 1) / 99;
@@ -1263,7 +1295,47 @@ static void update_view_state(void) {
                       LV_OBJ_FLAG_HIDDEN);
 }
 
+// Advance the shared ✻ spinner on its own cadence; false when it isn't due yet.
+static bool spinner_step(uint32_t now) {
+    if (now - anim_last_ms < spinner_ms[anim_spinner_idx]) return false;
+    anim_last_ms = now;
+    anim_phase = (anim_phase + 1) % SPINNER_PHASES;
+    anim_spinner_idx = (anim_phase < SPINNER_COUNT) ? anim_phase
+                                                    : (SPINNER_PHASES - anim_phase);
+    return true;
+}
+
+// Weather / stocks status line: the same "<glyph> <Text>…" as Usage, carrying
+// that screen's one live fact (next sun event / market state).
+static void tick_extra_footer(uint32_t now) {
+    lv_obj_t* footer;
+    const char* text;
+    if (current_screen == SCREEN_WEATHER) {
+        footer = wx_footer;
+        text = wx_footer_text;
+    } else {
+        footer = st_footer;
+        bool any_open = false;
+        for (int i = 0; i < stock_count; i++) {
+            if (stock_rows[i].have && stock_rows[i].q.open) any_open = true;
+        }
+        text = any_open ? "Markets open" : "Markets closed";
+    }
+    if (!text[0]) {
+        if (lv_label_get_text(footer)[0]) lv_label_set_text(footer, "");
+        return;
+    }
+    if (!spinner_step(now)) return;
+    static char buf[48];
+    snprintf(buf, sizeof(buf), "%s %s\xE2\x80\xA6", spinner_frames[anim_spinner_idx], text);
+    lv_label_set_text(footer, buf);
+}
+
 void ui_tick_anim(void) {
+    if (current_screen == SCREEN_WEATHER || current_screen == SCREEN_STOCKS) {
+        tick_extra_footer(lv_tick_get());
+        return;
+    }
     if (current_screen != SCREEN_USAGE) return;
     update_view_state();
     if (view_state == 1) splash_mini_tick();   // animate the sleeping creature on the idle screen
@@ -1298,11 +1370,7 @@ void ui_tick_anim(void) {
         anim_msg_start = now;
     }
 
-    if (now - anim_last_ms < spinner_ms[anim_spinner_idx]) return;
-    anim_last_ms = now;
-    anim_phase = (anim_phase + 1) % SPINNER_PHASES;
-    anim_spinner_idx = (anim_phase < SPINNER_COUNT) ? anim_phase
-                                                    : (SPINNER_PHASES - anim_phase);
+    if (!spinner_step(now)) return;
 
     // Status text by priority. Whimsical messages only when connected & settled.
     const char* text;

@@ -66,6 +66,16 @@ def geocode(name):
     return hits[0]["latitude"], hits[0]["longitude"], hits[0]["name"]
 
 
+def next_sun_event(now_local, sunrises, sunsets):
+    """'Sunset 18:45' / 'Sunrise 07:41' — whichever comes next. Inputs are the
+    local ISO timestamps Open-Meteo returns with timezone=auto."""
+    events = sorted([(t, "Sunrise") for t in sunrises] + [(t, "Sunset") for t in sunsets])
+    for t, name in events:
+        if t > now_local:
+            return f"{name} {t[11:16]}"
+    return ""
+
+
 def weather_payload(forecast, label):
     """Build the {"k":"wx"} payload from an Open-Meteo forecast response."""
     cur = forecast["current"]
@@ -85,6 +95,7 @@ def weather_payload(forecast, label):
         "hi": round(daily["temperature_2m_max"][0]),
         "lo": round(daily["temperature_2m_min"][0]),
         "f": days,
+        "sun": next_sun_event(cur["time"], daily.get("sunrise", []), daily.get("sunset", [])),
     }
 
 
@@ -97,7 +108,7 @@ def fetch_weather(location, coords=None):
     url = ("https://api.open-meteo.com/v1/forecast?timezone=auto"
            f"&forecast_days={FORECAST_DAYS + 1}&latitude={lat}&longitude={lon}"
            "&current=temperature_2m,apparent_temperature,weather_code,is_day"
-           "&daily=weather_code,temperature_2m_max,temperature_2m_min")
+           "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset")
     return weather_payload(get_json(url), label)
 
 

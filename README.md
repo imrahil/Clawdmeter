@@ -230,8 +230,8 @@ weather_location = Ennetmoos
 stocks = AMD, NVDA=NVIDIA, PLTR=Palantir, R3NK.DE=Renk
 ```
 
-- **Weather** comes from [Open-Meteo](https://open-meteo.com) (no account, no key), refreshed every 15 minutes: the current temperature and condition, feels-like and today's high/low, and a three-day forecast. `weather_location` is looked up with Open-Meteo's geocoder; if it picks the wrong place, pin it with `weather_coords = 46.956, 8.339` (the location name is then shown as-is).
-- **Stocks** come from Yahoo Finance's chart endpoint (unofficial, no key), refreshed every 5 minutes, up to 5 symbols. Use Yahoo's symbols — exchange suffixes like `.DE` (Xetra) or `.SW` (SIX) are accepted and dropped from the display. `SYMBOL=Label` overrides the company name shown under the ticker. Each row shows the price, the change since the previous close, and today's intraday line against a dashed previous-close baseline; mid-session the line only spans the part of the trading day that has happened. An orange dot next to the ticker means the market is open — without it the price is the last close.
+- **Weather** comes from [Open-Meteo](https://open-meteo.com) (no account, no key), refreshed every 15 minutes: the current temperature and condition, feels-like and today's high/low, a three-day forecast, and the next sunrise or sunset on the status line. `weather_location` is looked up with Open-Meteo's geocoder; if it picks the wrong place, pin it with `weather_coords = 46.956, 8.339` (the location name is then shown as-is).
+- **Stocks** come from Yahoo Finance's chart endpoint (unofficial, no key), refreshed every 5 minutes, up to 5 symbols. Use Yahoo's symbols — exchange suffixes like `.DE` (Xetra) or `.SW` (SIX) are accepted and dropped from the display. `SYMBOL=Label` overrides the company name shown under the ticker. Each row shows the price, the change since the previous close, and today's intraday line against a dashed previous-close baseline; mid-session the line only spans the part of the trading day that has happened. An orange dot next to the ticker means that market is open — without it the price is the last close — and the status line says whether any of your markets are open.
 
 Each screen drops out of the tap rotation if the daemon hasn't refreshed it for 3 hours. The macOS and Windows daemons don't send these yet.
 
@@ -284,12 +284,12 @@ The optional extra screens use separate writes tagged with `k`, which a usage pa
 
 ```json
 { "k": "wx", "loc": "Ennetmoos", "t": 12.8, "fl": 11, "c": 0, "d": 0, "hi": 15, "lo": 7,
-  "f": [["Tue", 80, 16, 8], ["Wed", 80, 19, 13], ["Thu", 3, 18, 12]] }
+  "f": [["Tue", 80, 16, 8], ["Wed", 80, 19, 13], ["Thu", 3, 18, 12]], "sun": "Sunrise 07:41" }
 { "k": "q", "i": 0, "n": 4, "sy": "AMD", "nm": "Advanced Micro", "cu": "USD", "p": 591.75,
   "pc": 608.1, "o": 1, "h": [51, 44, 27, 12], "b": 99, "fr": 62 }
 ```
 
-Weather: `t` = temperature °C, `fl` = feels-like, `c` = [WMO weather code](https://open-meteo.com/en/docs), `d` = daytime, `hi`/`lo` = today's range, `f` = forecast days `[day, code, high, low]`. Quote: `i`/`n` = row index / row count, `sy` = symbol, `nm` = name, `cu` = currency, `p` = price, `pc` = previous close, `o` = market open, `h` = intraday closes scaled 0–99, `b` = previous close on that scale, `fr` = percent of the trading day `h` covers. Strings are ASCII.
+Weather: `t` = temperature °C, `fl` = feels-like, `c` = [WMO weather code](https://open-meteo.com/en/docs), `d` = daytime, `hi`/`lo` = today's range, `f` = forecast days `[day, code, high, low]`, `sun` = next sun event for the status line (`"Sunset 18:45"`). Quote: `i`/`n` = row index / row count, `sy` = symbol, `nm` = name, `cu` = currency, `p` = price, `pc` = previous close, `o` = market open, `h` = intraday closes scaled 0–99, `b` = previous close on that scale, `fr` = percent of the trading day `h` covers. Strings are ASCII.
 
 ## Development
 
