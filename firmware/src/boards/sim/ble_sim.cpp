@@ -45,7 +45,7 @@ static void add_state(const char* line) {
     s->json[len] = 0;
     s->hold_ms = 3000;
     snprintf(s->name, sizeof(s->name), "state %d", n_states + 1);
-    // "name" and "hold_ms" ride along in the payload; main's parse_json
+    // "name" and "hold_ms" ride along in the payload; main's parse_usage
     // ignores unknown keys so the line is delivered as-is.
     JsonDocument doc;
     if (deserializeJson(doc, s->json) == DeserializationError::Ok) {

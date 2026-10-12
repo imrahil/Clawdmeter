@@ -2,9 +2,13 @@
 #include "data.h"
 #include "ble.h"
 
+// Tap order: each tap moves to the next screen, skipping the weather/stocks
+// screens until the daemon has sent them (they're opt-in, daemon-side).
 enum screen_t {
     SCREEN_SPLASH,
     SCREEN_USAGE,
+    SCREEN_WEATHER,
+    SCREEN_STOCKS,
     SCREEN_COUNT,
 };
 
@@ -13,6 +17,9 @@ void ui_update(const UsageData* data);
 void ui_tick_anim(void);
 void ui_show_screen(screen_t screen);
 void ui_toggle_splash(void);
+void ui_next_screen(void);
+void ui_update_weather(const WeatherData* data);
+void ui_update_stock(const StockQuote* quote);
 screen_t ui_get_current_screen(void);
 void ui_update_ble_status(ble_state_t state, const char* name, const char* mac);
 void ui_update_battery(int percent, bool charging, bool usb_power);  // percent < 0 = no battery

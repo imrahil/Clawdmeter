@@ -97,15 +97,8 @@ static void my_touch_cb(lv_indev_t* indev, lv_indev_data_t* data) {
     }
 }
 
-// Parse a JSON line into UsageData.
-static bool parse_json(const char* json, UsageData* out) {
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, json);
-    if (err) {
-        Serial.printf("JSON parse error: %s\n", err.c_str());
-        return false;
-    }
-
+// Parse a usage payload (untagged JSON object) into UsageData.
+static void parse_usage(JsonDocument& doc, UsageData* out) {
     out->session_pct = doc["s"] | 0.0f;
     out->session_reset_mins = doc["sr"] | -1;
     out->weekly_pct = doc["w"] | 0.0f;
@@ -125,6 +118,50 @@ static bool parse_json(const char* json, UsageData* out) {
     out->clock_fmt = doc["tf"] | 24;
     out->ok = doc["ok"] | false;
     out->valid = true;
+}
+
+// {"k":"wx"} — weather screen payload (daemon/extras.py weather_payload).
+static void parse_weather(JsonDocument& doc, WeatherData* out) {
+    strlcpy(out->location, doc["loc"] | "", sizeof(out->location));
+    out->temp   = doc["t"] | 0.0f;
+    out->feels  = doc["fl"] | 0;
+    out->code   = doc["c"] | 0;
+    out->is_day = doc["d"].as<bool>();
+    out->hi     = doc["hi"] | 0;
+    out->lo     = doc["lo"] | 0;
+    JsonArray f = doc["f"].as<JsonArray>();
+    out->n_days = 0;
+    for (JsonArray day : f) {
+        if (out->n_days >= WX_FORECAST_DAYS) break;
+        WeatherDay* d = &out->days[out->n_days++];
+        strlcpy(d->day, day[0] | "", sizeof(d->day));
+        d->code = day[1] | 0;
+        d->hi   = day[2] | 0;
+        d->lo   = day[3] | 0;
+    }
+}
+
+// {"k":"q"} — one stock row (daemon/extras.py quote_payload).
+static bool parse_quote(JsonDocument& doc, StockQuote* out) {
+    out->index = doc["i"] | -1;
+    out->count = doc["n"] | 0;
+    if (out->index < 0 || out->index >= STOCK_MAX) return false;
+    strlcpy(out->symbol, doc["sy"] | "", sizeof(out->symbol));
+    strlcpy(out->name, doc["nm"] | "", sizeof(out->name));
+    strlcpy(out->currency, doc["cu"] | "", sizeof(out->currency));
+    out->price      = doc["p"] | 0.0f;
+    out->prev_close = doc["pc"] | 0.0f;
+    out->open       = doc["o"].as<bool>();
+    out->baseline   = doc["b"] | 0;
+    int fr = doc["fr"] | 100;            // absent (closed / older daemon) = full width
+    out->session_pct = (uint8_t)(fr < 1 ? 1 : fr > 100 ? 100 : fr);
+    JsonArray h = doc["h"].as<JsonArray>();
+    out->n_hist = 0;
+    for (JsonVariant v : h) {
+        if (out->n_hist >= STOCK_HIST_MAX) break;
+        int val = v | 0;
+        out->hist[out->n_hist++] = (uint8_t)(val < 0 ? 0 : val > 99 ? 99 : val);
+    }
     return true;
 }
 
@@ -379,7 +416,27 @@ void loop() {
     check_serial_cmd();
 
     if (ble_has_data()) {
-        if (parse_json(ble_get_data(), &usage)) {
+        JsonDocument doc;
+        DeserializationError err = deserializeJson(doc, ble_get_data());
+        const char* kind = err ? "" : (doc["k"] | "");
+        if (err) {
+            Serial.printf("JSON parse error: %s\n", err.c_str());
+            ble_send_nack();
+        } else if (strcmp(kind, "wx") == 0) {
+            static WeatherData weather;
+            parse_weather(doc, &weather);
+            ui_update_weather(&weather);
+            ble_send_ack();
+        } else if (strcmp(kind, "q") == 0) {
+            static StockQuote quote;
+            if (parse_quote(doc, &quote)) {
+                ui_update_stock(&quote);
+                ble_send_ack();
+            } else {
+                ble_send_nack();
+            }
+        } else {
+            parse_usage(doc, &usage);
             int g_before = usage_rate_group();
             bool session_reset = usage_rate_sample(usage.session_pct);
             int g_after = usage_rate_group();
@@ -409,8 +466,6 @@ void loop() {
             }
             ui_update(&usage);
             ble_send_ack();
-        } else {
-            ble_send_nack();
         }
     }
 

@@ -20,3 +20,44 @@ struct UsageData {
     bool ok;                 // data parse succeeded
     bool valid;              // false until first successful parse
 };
+
+// ---- Optional extra screens (daemon sends these only when configured) ----
+// Both ride the usage RX characteristic, tagged with "k" ("wx" / "q"); an
+// untagged write is always a usage payload. Field names mirror daemon/extras.py.
+
+#define WX_FORECAST_DAYS 3
+
+struct WeatherDay {
+    char day[4];             // "Tue"
+    int  code;               // WMO weather code
+    int  hi, lo;             // °C
+};
+
+struct WeatherData {
+    char  location[24];
+    float temp;              // °C, current
+    int   feels;             // °C, apparent
+    int   code;              // WMO weather code, current
+    bool  is_day;
+    int   hi, lo;            // today's range, °C
+    WeatherDay days[WX_FORECAST_DAYS];
+    int   n_days;
+};
+
+#define STOCK_MAX       5
+#define STOCK_HIST_MAX  32
+
+struct StockQuote {
+    int     index;           // row 0..count-1
+    int     count;           // rows the daemon is sending; rows >= count hide
+    char    symbol[10];      // "R3NK" (exchange suffix stripped daemon-side)
+    char    name[24];
+    char    currency[4];     // "USD", "EUR"…
+    float   price;
+    float   prev_close;
+    bool    open;            // regular session in progress
+    uint8_t hist[STOCK_HIST_MAX];  // intraday closes scaled 0..99
+    int     n_hist;
+    uint8_t baseline;        // previous close on the same 0..99 scale
+    uint8_t session_pct;     // share of the trading day hist covers, 0..100
+};

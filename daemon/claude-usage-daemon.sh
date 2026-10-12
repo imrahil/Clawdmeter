@@ -279,6 +279,67 @@ read_clock_setting() {
     esac
 }
 
+# --- Weather + stock screens (optional) --------------------------------------
+# Off until `weather_location` / `stocks` are set in the config. extras.py does
+# the fetching (stdlib only); each payload is its own write tagged "k", so the
+# firmware never mistakes it for usage. Writes are spaced a second apart so the
+# firmware's single RX slot has drained the previous one. They deliberately do
+# NOT touch LAST_WRITE_TS: the heartbeat must keep its usage cadence, since the
+# firmware's 90s freshness window only counts usage payloads.
+EXTRAS_PY="$(dirname "$(readlink -f "$0")")/extras.py"
+WEATHER_INTERVAL=900   # Open-Meteo updates hourly; 15 min keeps "now" close
+STOCKS_INTERVAL=300
+EXTRAS_RETRY=120       # after a failed fetch, try again this much sooner
+LAST_WEATHER=0
+LAST_STOCKS=0
+
+# Echo the raw value of a config key ($1), trimmed; empty if unset.
+read_config_string() {
+    [ -f "$CONFIG_FILE" ] || return 0
+    grep -E "^[[:space:]]*$1[[:space:]]*=" "$CONFIG_FILE" | tail -1 \
+        | tr -d '\r' \
+        | sed -E "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//; s/[[:space:]]*(#.*)?\$//"
+}
+
+write_extra() {
+    sleep 1
+    write_gatt "$RX_CHAR_PATH" "$1" || { log "Extra write failed"; return 1; }
+}
+
+send_extras() {
+    local now loc spec out line sent
+    now=$(date +%s)
+
+    loc=$(read_config_string weather_location)
+    if [ -n "$loc" ] && (( now - LAST_WEATHER >= WEATHER_INTERVAL )); then
+        if out=$(python3 "$EXTRAS_PY" weather "$loc" "$(read_config_string weather_coords)") && [ -n "$out" ]; then
+            log "Weather: $out"
+            write_extra "$out" && LAST_WEATHER=$now
+        else
+            log "Weather fetch failed"
+            LAST_WEATHER=$(( now - WEATHER_INTERVAL + EXTRAS_RETRY ))
+        fi
+    fi
+
+    spec=$(read_config_string stocks)
+    if [ -n "$spec" ] && (( now - LAST_STOCKS >= STOCKS_INTERVAL )); then
+        sent=0
+        if out=$(python3 "$EXTRAS_PY" stocks "$spec"); then
+            while IFS= read -r line; do
+                [ -z "$line" ] && continue
+                write_extra "$line" && sent=$((sent + 1))
+            done <<< "$out"
+        fi
+        if (( sent > 0 )); then
+            log "Stocks: sent $sent quote(s)"
+            LAST_STOCKS=$now
+        else
+            log "Stock fetch failed"
+            LAST_STOCKS=$(( now - STOCKS_INTERVAL + EXTRAS_RETRY ))
+        fi
+    fi
+}
+
 # Best-effort 12h/24h detection from the locale. Echoes 12 or 24 (default 24).
 detect_hour_format() {
     local tfmt
@@ -685,6 +746,7 @@ while true; do
     # Poll loop: tick every $TICK seconds. Poll Anthropic when the
     # interval has elapsed OR when the ESP requested a refresh.
     LAST_POLL=0
+    LAST_WEATHER=0 LAST_STOCKS=0   # a fresh connection may be a rebooted device
     while is_connected; do
         NOW=$(date +%s)
         NEW_INTERVAL=$(read_poll_interval)
@@ -708,6 +770,7 @@ while true; do
         elif (( HEARTBEAT_INTERVAL < POLL_INTERVAL && NOW - LAST_WRITE_TS >= HEARTBEAT_INTERVAL )); then
             heartbeat
         fi
+        send_extras
         sleep "$TICK"
     done
 

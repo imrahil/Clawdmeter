@@ -14,12 +14,12 @@ Shift+Tab over BLE HID for Claude Code's voice mode and mode-toggle shortcuts.
 
 ## Screens
 
-The device boots into the splash. Tap the screen anywhere to switch to the Usage view; tap again to flip back to the splash.
+The device boots into the splash. Tap the screen anywhere to move to the next screen: splash → Usage → Weather → Stocks → back to the splash. Weather and Stocks are optional and only join the rotation once the daemon sends them (see [Weather and stocks](#weather-and-stocks-optional)); without them a tap simply flips between the splash and Usage.
 
-|              Splash               |              Usage              |
-| :-------------------------------: | :-----------------------------: |
-| ![Splash](screenshots/splash.gif) | ![Usage](screenshots/usage.png) |
-|   Splash; touch-toggle anytime    | Session and weekly utilization  |
+|              Splash               |              Usage              |                 Weather                 |               Stocks                |
+| :-------------------------------: | :-----------------------------: | :-------------------------------------: | :---------------------------------: |
+| ![Splash](screenshots/splash.gif) | ![Usage](screenshots/usage.png) | ![Weather](screenshots/weather.png)     | ![Stocks](screenshots/stocks.png)   |
+|   Splash; touch-toggle anytime    | Session and weekly utilization  | Now + 3-day forecast (optional)         | Your tickers, intraday (optional)   |
 
 While the splash is up, the middle (PWR) button cycles animations. **Hold the power button for 3 seconds, then release, to put the device into pairing mode** — this clears the saved Bluetooth bond and re-advertises. The firmware also auto-rotates animations every 20 s within the current usage-rate group, so a long stretch on the splash isn't just one Clawd on loop.
 
@@ -221,6 +221,20 @@ When a Claude Code session is waiting on you (a permission prompt, a question, o
 
 Clawd walks back to his corner when you tap the screen, after 2 minutes, or when that session moves on (you answer, approve a tool, or send a prompt). He shows up about 5 seconds after Claude Code raises the notification, because the daemon checks once per tick. To hear a beep as well, set `beep = on` in `~/.config/claude-usage-monitor/config` (the installers ask). The macOS and Linux daemons handle these alerts; the Windows daemon doesn't yet.
 
+## Weather and stocks (optional)
+
+Two extra screens, fed by the Linux daemon over the same BLE link — the board does no networking of its own and holds no keys. Both are off until you set them in `~/.config/claude-usage-monitor/config` (picked up within a tick, no restart):
+
+```ini
+weather_location = Ennetmoos
+stocks = AMD, NVDA=NVIDIA, PLTR=Palantir, R3NK.DE=Renk
+```
+
+- **Weather** comes from [Open-Meteo](https://open-meteo.com) (no account, no key), refreshed every 15 minutes: the current temperature and condition, feels-like and today's high/low, and a three-day forecast. `weather_location` is looked up with Open-Meteo's geocoder; if it picks the wrong place, pin it with `weather_coords = 46.956, 8.339` (the location name is then shown as-is).
+- **Stocks** come from Yahoo Finance's chart endpoint (unofficial, no key), refreshed every 5 minutes, up to 5 symbols. Use Yahoo's symbols — exchange suffixes like `.DE` (Xetra) or `.SW` (SIX) are accepted and dropped from the display. `SYMBOL=Label` overrides the company name shown under the ticker. Each row shows the price, the change since the previous close, and today's intraday line against a dashed previous-close baseline; mid-session the line only spans the part of the trading day that has happened. An orange dot next to the ticker means the market is open — without it the price is the last close.
+
+Each screen drops out of the tap rotation if the daemon hasn't refreshed it for 3 hours. The macOS and Windows daemons don't send these yet.
+
 ## How it works
 
 <img src="assets/readme/magnifier.gif" width="150" align="right" alt="">
@@ -235,12 +249,12 @@ Clawd walks back to his corner when you tap the screen, after 2 minutes, or when
 
 ## Physical buttons
 
-The board has three side buttons. Left and right send HID keys; the middle (PWR) button cycles splash animations and, held for 3 seconds, triggers pairing mode.
+The board has three side buttons. Left and right send HID keys; the middle (PWR) button cycles splash animations (or the screen brightness on any other screen) and, held for 3 seconds, triggers pairing mode. Switching screens is a tap on the panel.
 
 | Button           | GPIO         | Function                                                     |
 | ---------------- | ------------ | ------------------------------------------------------------ |
 | **Left**         | GPIO 0       | Hold to send Space (Claude Code voice-mode push-to-talk)     |
-| **Middle** (PWR) | AXP2101 PKEY | On splash: cycle animations. Hold 3s + release: pairing mode |
+| **Middle** (PWR) | AXP2101 PKEY | On splash: cycle animations. Elsewhere: cycle brightness. Hold 3s + release: pairing mode |
 | **Right**        | GPIO 18      | Press to send Shift+Tab (Claude Code mode toggle)            |
 
 Space and Shift+Tab go out as standard BLE HID keyboard reports, so they trigger in whatever window has focus on the paired host — not just Claude Code.
@@ -264,7 +278,18 @@ JSON payload format (written to RX):
 
 Fields: `s` = session %, `sr` = session reset (minutes), `w` = weekly %, `wr` = weekly reset (minutes), `st` = status, `ok` = success flag.
 
-Optional attention fields are only sent as part of a full payload, because the firmware treats every write as a complete update: `b` = beep once, `m` = attention message (ASCII), `x` = end the alert.
+Optional attention fields are only sent as part of a full payload, because the firmware treats every write as a complete usage update: `b` = beep once, `m` = attention message (ASCII), `x` = end the alert.
+
+The optional extra screens use separate writes tagged with `k`, which a usage payload never carries (built by `daemon/extras.py`):
+
+```json
+{ "k": "wx", "loc": "Ennetmoos", "t": 12.8, "fl": 11, "c": 0, "d": 0, "hi": 15, "lo": 7,
+  "f": [["Tue", 80, 16, 8], ["Wed", 80, 19, 13], ["Thu", 3, 18, 12]] }
+{ "k": "q", "i": 0, "n": 4, "sy": "AMD", "nm": "Advanced Micro", "cu": "USD", "p": 591.75,
+  "pc": 608.1, "o": 1, "h": [51, 44, 27, 12], "b": 99, "fr": 62 }
+```
+
+Weather: `t` = temperature °C, `fl` = feels-like, `c` = [WMO weather code](https://open-meteo.com/en/docs), `d` = daytime, `hi`/`lo` = today's range, `f` = forecast days `[day, code, high, low]`. Quote: `i`/`n` = row index / row count, `sy` = symbol, `nm` = name, `cu` = currency, `p` = price, `pc` = previous close, `o` = market open, `h` = intraday closes scaled 0–99, `b` = previous close on that scale, `fr` = percent of the trading day `h` covers. Strings are ASCII.
 
 ## Development
 
@@ -289,7 +314,8 @@ sim`, then `cd firmware && .pio/build/sim/program`). See
 ## Credits
 
 - Pixel-art Clawd animations are Anthropic's official mascot art (claude.ai/code, Claude Code desktop), archived and converted by the tooling in `tools/` and `research/clawd-official/`.
-- Lucide icon set ([lucide.dev](https://lucide.dev), MIT) for bluetooth and battery UI glyphs.
+- Lucide icon set ([lucide.dev](https://lucide.dev), MIT/ISC) for the bluetooth, battery and weather glyphs.
+- Weather data from [Open-Meteo](https://open-meteo.com) (CC BY 4.0); stock quotes from Yahoo Finance (unofficial endpoint, personal use).
 - Anthropic brand fonts (Tiempos Text, Styrene B) — see licensing warning below.
 
 ## Licensing gray area warning

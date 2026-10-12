@@ -1,6 +1,10 @@
 # Default sim scenario — one daemon payload per line, played in a loop.
 # Extra keys: "name" (window title), "hold_ms" (time on this state, default 3000).
 # Keys: space play/pause · arrows step · 1-9 jump · see boards/sim/board.h.
+{"name":"weather","hold_ms":200,"k":"wx","loc":"Ennetmoos","t":12.8,"fl":11,"c":2,"d":1,"hi":15,"lo":7,"f":[["Tue",80,16,8],["Wed",61,19,13],["Thu",3,18,12]]}
+{"name":"quote AMD","hold_ms":200,"k":"q","i":0,"n":3,"sy":"AMD","nm":"Advanced Micro","cu":"USD","p":591.75,"pc":608.1,"o":1,"h":[51,44,27,12,7,5,6,0,19,27,30,24,26,17,24,25],"b":99,"fr":62}
+{"name":"quote NVDA","hold_ms":200,"k":"q","i":1,"n":3,"sy":"NVDA","nm":"NVIDIA","cu":"USD","p":226.44,"pc":229.28,"o":1,"h":[58,44,0,3,3,18,15,11,18,31,36,28,29,23,31,32],"b":99,"fr":62}
+{"name":"quote R3NK","hold_ms":200,"k":"q","i":2,"n":3,"sy":"R3NK","nm":"Renk","cu":"EUR","p":34.69,"pc":34.04,"o":0,"h":[58,79,83,9,21,33,18,14,8,14,3,8,26,32,48,62,74,76,98,97,89,85,68,62,30,31,17,9,60,69,62,99],"b":0,"fr":100}
 {"name":"fresh session","hold_ms":3000,"s":3.0,"sr":295,"w":12.0,"wr":9000,"st":"allowed","ok":true,"t":1785474000,"tf":24}
 {"name":"steady use","hold_ms":3000,"s":42.0,"sr":180,"w":33.0,"wr":7900,"st":"allowed","ok":true}
 {"name":"warning zone","hold_ms":3000,"s":78.0,"sr":75,"w":55.0,"wr":6400,"st":"allowed","ok":true}

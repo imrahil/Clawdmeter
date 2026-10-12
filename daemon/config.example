@@ -49,3 +49,15 @@ beep = off
 #   12   = show the clock, forced 12-hour  (e.g. 6:28 PM)
 #   24   = show the clock, forced 24-hour  (e.g. 18:28)
 clock = off
+
+# Weather screen (Linux daemon). A place name, looked up with Open-Meteo's
+# geocoder (no account, no key); refreshed every 15 minutes. If the lookup
+# picks the wrong place, pin it with weather_coords = <lat>, <lon>.
+# Unset (default) = no weather screen.
+# weather_location = Ennetmoos
+# weather_coords = 46.956, 8.339
+
+# Stocks screen (Linux daemon). Up to 5 Yahoo Finance symbols, comma-separated;
+# SYMBOL=Label overrides the name shown under the ticker. Refreshed every 5
+# minutes. Unset (default) = no stocks screen.
+# stocks = AMD, NVDA=NVIDIA, PLTR=Palantir, R3NK.DE=Renk

@@ -22,7 +22,7 @@ Launch from the `firmware/` directory — the default scenario path
 
 | Key | Action |
 |---|---|
-| mouse / left-drag | touch (tap toggles splash ↔ usage) |
+| mouse / left-drag | touch (tap cycles splash → usage → weather → stocks) |
 | `space` | play/pause scenario playback |
 | `←` / `→` | step one scenario state (pauses playback) |
 | `1`–`9` | jump to scenario state N (pauses playback) |

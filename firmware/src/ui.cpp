@@ -5,7 +5,9 @@
 #include "logo.h"
 #include "clawd_still.h"
 #include "icons.h"
+#include "weather_icons.h"
 #include "hal/board_caps.h"
+#include <math.h>
 
 // Custom fonts (scaled for 314 PPI, ~1.9x from original 165 PPI)
 LV_FONT_DECLARE(font_tiempos_56);
@@ -19,6 +21,33 @@ LV_FONT_DECLARE(font_styrene_14);
 LV_FONT_DECLARE(font_styrene_12);
 LV_FONT_DECLARE(font_mono_32);
 LV_FONT_DECLARE(font_mono_18);
+// Weather temperature: digits, '-' and '°' only.
+LV_FONT_DECLARE(font_styrene_temp_96);
+LV_FONT_DECLARE(font_styrene_temp_72);
+// Symbols-only fallbacks (£ ¥ ° · € −) for the ASCII-only Styrene sizes.
+LV_FONT_DECLARE(font_sym_12);
+LV_FONT_DECLARE(font_sym_14);
+LV_FONT_DECLARE(font_sym_16);
+LV_FONT_DECLARE(font_sym_20);
+LV_FONT_DECLARE(font_sym_24);
+LV_FONT_DECLARE(font_sym_28);
+LV_FONT_DECLARE(font_sym_48);
+
+// The weather and stock screens print ° € −, which the ASCII-only text fonts
+// lack. They use copies of those fonts with a same-size symbols font as the
+// LVGL fallback. Built once in compute_layout().
+static lv_font_t sym_font_pool[12];
+static int       sym_font_n = 0;
+static const lv_font_t* with_symbols(const lv_font_t* base, const lv_font_t* sym) {
+    for (int i = 0; i < sym_font_n; i++) {
+        if (sym_font_pool[i].dsc == base->dsc && sym_font_pool[i].fallback == sym) return &sym_font_pool[i];
+    }
+    if (sym_font_n >= (int)(sizeof(sym_font_pool) / sizeof(sym_font_pool[0]))) return base;
+    lv_font_t* f = &sym_font_pool[sym_font_n++];
+    *f = *base;
+    f->fallback = sym;
+    return f;
+}
 
 // Layout values computed from the active board's geometry. Populated once
 // in ui_init() and treated as const for the rest of the program. Adding a
@@ -65,6 +94,29 @@ struct Layout {
     const lv_font_t* bt_device_font;
     const lv_font_t* bt_credit_1_font;
     const lv_font_t* bt_credit_2_font;
+
+    // Weather screen
+    int16_t wx_icon_px;              // main condition icon (drawn from the 120px art)
+    int16_t wx_main_y;               // top of the icon + temperature row
+    int16_t wx_cond_y;               // condition word ("Partly cloudy")
+    int16_t wx_detail_y;             // feels-like / high / low line
+    int16_t wx_fc_y, wx_fc_h;        // forecast tiles
+    int16_t wx_fc_icon_px;           // forecast icon (drawn from the 48px art)
+    const lv_font_t* wx_temp_font;
+    const lv_font_t* wx_cond_font;
+    const lv_font_t* wx_detail_font;
+    const lv_font_t* wx_fc_font;
+
+    // Stocks screen
+    int16_t st_row_h, st_row_gap;    // row height shrinks when 5 rows must fit
+    int16_t st_pad_y;
+    int16_t st_left_w;               // symbol / name column
+    int16_t st_spark_w;              // intraday sparkline
+    int16_t st_line_w;               // sparkline stroke
+    const lv_font_t* st_sym_font;
+    const lv_font_t* st_name_font;
+    const lv_font_t* st_price_font;
+    const lv_font_t* st_chg_font;
 };
 static Layout L = {};
 
@@ -117,6 +169,27 @@ static void compute_layout(const BoardCaps& c) {
         L.bt_device_font   = &font_styrene_28;
         L.bt_credit_1_font = &font_styrene_24;
         L.bt_credit_2_font = &font_styrene_20;
+        L.wx_icon_px = 120;
+        L.wx_main_y = 96;
+        L.wx_cond_y = 226;
+        L.wx_detail_y = 264;
+        L.wx_fc_y = 312;
+        L.wx_fc_h = 130;
+        L.wx_fc_icon_px = 48;
+        L.wx_temp_font   = &font_styrene_temp_96;
+        L.wx_cond_font   = &font_styrene_28;
+        L.wx_detail_font = with_symbols(&font_styrene_24, &font_sym_24);
+        L.wx_fc_font     = with_symbols(&font_styrene_24, &font_sym_24);
+        L.st_row_h = 82;
+        L.st_row_gap = 10;
+        L.st_pad_y = 10;
+        L.st_left_w = 140;
+        L.st_spark_w = 120;
+        L.st_line_w = 3;
+        L.st_sym_font   = &font_styrene_28;
+        L.st_name_font  = &font_styrene_16;
+        L.st_price_font = with_symbols(&font_styrene_28, &font_sym_28);
+        L.st_chg_font   = with_symbols(&font_styrene_20, &font_sym_20);
     } else if (c.height >= 300) {
         // Compact layout — tuned for 368x448 (AMOLED-1.8).
         L.content_y = 85;
@@ -131,6 +204,27 @@ static void compute_layout(const BoardCaps& c) {
         L.bt_device_font   = &font_styrene_20;
         L.bt_credit_1_font = &font_styrene_16;
         L.bt_credit_2_font = &font_styrene_14;
+        L.wx_icon_px = 96;
+        L.wx_main_y = 82;
+        L.wx_cond_y = 188;
+        L.wx_detail_y = 220;
+        L.wx_fc_y = 262;
+        L.wx_fc_h = 118;
+        L.wx_fc_icon_px = 40;
+        L.wx_temp_font   = &font_styrene_temp_72;
+        L.wx_cond_font   = &font_styrene_24;
+        L.wx_detail_font = with_symbols(&font_styrene_20, &font_sym_20);
+        L.wx_fc_font     = with_symbols(&font_styrene_20, &font_sym_20);
+        L.st_row_h = 74;
+        L.st_row_gap = 8;
+        L.st_pad_y = 8;
+        L.st_left_w = 100;
+        L.st_spark_w = 84;
+        L.st_line_w = 2;
+        L.st_sym_font   = &font_styrene_24;
+        L.st_name_font  = &font_styrene_14;
+        L.st_price_font = with_symbols(&font_styrene_24, &font_sym_24);
+        L.st_chg_font   = with_symbols(&font_styrene_16, &font_sym_16);
     } else {
         // Small layout — tuned for 240x240 (LCD-1.54 and similar square TFTs).
         // Everything shrinks: fonts two steps down, panels ~half height, and
@@ -173,6 +267,27 @@ static void compute_layout(const BoardCaps& c) {
         L.bt_device_font   = &font_styrene_14;
         L.bt_credit_1_font = &font_styrene_12;
         L.bt_credit_2_font = &font_styrene_12;
+        L.wx_icon_px = 56;
+        L.wx_main_y = 40;
+        L.wx_cond_y = 100;
+        L.wx_detail_y = 118;
+        L.wx_fc_y = 140;
+        L.wx_fc_h = 92;
+        L.wx_fc_icon_px = 28;
+        L.wx_temp_font   = with_symbols(&font_styrene_48, &font_sym_48);
+        L.wx_cond_font   = &font_styrene_14;
+        L.wx_detail_font = with_symbols(&font_styrene_12, &font_sym_12);
+        L.wx_fc_font     = with_symbols(&font_styrene_12, &font_sym_12);
+        L.st_row_h = 44;
+        L.st_row_gap = 4;
+        L.st_pad_y = 4;
+        L.st_left_w = 70;
+        L.st_spark_w = 50;
+        L.st_line_w = 2;
+        L.st_sym_font   = &font_styrene_14;
+        L.st_name_font  = &font_styrene_12;
+        L.st_price_font = with_symbols(&font_styrene_14, &font_sym_14);
+        L.st_chg_font   = with_symbols(&font_styrene_12, &font_sym_12);
     }
 
     L.content_w = L.scr_w - 2 * L.margin;
@@ -542,6 +657,425 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_obj_align(lbl_anim, LV_ALIGN_BOTTOM_MID, 0, L.anim_y);
 }
 
+// ======== Weather / Stocks screens (optional, daemon-fed) ========
+// Both stay out of the tap rotation until their first payload lands, and drop
+// out again if the daemon stops refreshing them for EXTRA_STALE_MS.
+
+static const uint32_t EXTRA_STALE_MS = 3UL * 60 * 60 * 1000;
+
+static lv_obj_t* make_screen_container(lv_obj_t* scr) {
+    lv_obj_t* c = lv_obj_create(scr);
+    lv_obj_set_size(c, L.scr_w, L.scr_h);
+    lv_obj_set_pos(c, 0, 0);
+    lv_obj_set_style_bg_opa(c, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(c, 0, 0);
+    lv_obj_set_style_pad_all(c, 0, 0);
+    lv_obj_clear_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(c, global_click_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(c, LV_OBJ_FLAG_HIDDEN);
+    return c;
+}
+
+// Header title in the same slot as the Usage title. Long names step down to
+// the smaller Tiempos, then re-centre in the gap between mascot and battery,
+// and only then get cut with "…" — they never run under the corner icons.
+static lv_obj_t* make_screen_title(lv_obj_t* parent) {
+    lv_obj_t* t = lv_label_create(parent);
+    lv_obj_set_style_text_font(t, L.title_font, 0);
+    lv_obj_set_style_text_color(t, COL_TEXT, 0);
+    lv_label_set_long_mode(t, LV_LABEL_LONG_DOT);
+    lv_obj_align(t, LV_ALIGN_TOP_MID, L.title_nudge, L.title_y);
+    return t;
+}
+
+static void set_screen_title(lv_obj_t* t, const char* text) {
+    const int mascot_w = L.small_icons ? CLAWD_STILL_SMALL_W : CLAWD_STILL_W;
+    const int center = L.scr_w / 2 + L.title_nudge;
+    const int left = L.margin + mascot_w + 8;
+    const int right = L.scr_w - L.margin - L.batt_w - 8;
+    const int centered_w = 2 * LV_MIN(center - left, right - center);
+    const int gap_w = right - left;
+
+    auto width_of = [&](const lv_font_t* f) {
+        lv_point_t size;
+        lv_text_get_size(&size, text, f, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+        return (int)size.x;
+    };
+
+    lv_label_set_text(t, text);
+    lv_obj_set_size(t, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    const lv_font_t* fonts[] = {L.title_font, &font_tiempos_34};
+    for (const lv_font_t* f : fonts) {
+        if (width_of(f) <= centered_w) {
+            lv_obj_set_style_text_font(t, f, 0);
+            lv_obj_align(t, LV_ALIGN_TOP_MID, L.title_nudge, L.title_y);
+            return;
+        }
+    }
+    const lv_font_t* f = &font_tiempos_34;
+    const int w = LV_MIN(width_of(f), gap_w);
+    lv_obj_set_style_text_font(t, f, 0);
+    lv_obj_set_size(t, w, lv_font_get_line_height(f));
+    lv_obj_align(t, LV_ALIGN_TOP_LEFT, left + (gap_w - w) / 2, L.title_y);
+}
+
+// ---- Weather ----
+
+enum {
+    WX_SUN, WX_MOON, WX_CLOUD_SUN, WX_CLOUD_MOON, WX_CLOUD, WX_FOG,
+    WX_DRIZZLE, WX_RAIN, WX_SNOW, WX_THUNDER, WX_ICON_COUNT,
+};
+static lv_image_dsc_t wx_big_dscs[WX_ICON_COUNT];
+static lv_image_dsc_t wx_small_dscs[WX_ICON_COUNT];
+
+static void init_weather_icons(void) {
+#define WX_ICON(idx, NAME, name)                                                              \
+    init_icon_dsc_rgb565a8(&wx_big_dscs[idx], ICON_WX_##NAME##_120_W, ICON_WX_##NAME##_120_H, \
+                           icon_wx_##name##_120_data);                                        \
+    init_icon_dsc_rgb565a8(&wx_small_dscs[idx], ICON_WX_##NAME##_48_W, ICON_WX_##NAME##_48_H, \
+                           icon_wx_##name##_48_data)
+    WX_ICON(WX_SUN,        SUN,             sun);
+    WX_ICON(WX_MOON,       MOON,            moon);
+    WX_ICON(WX_CLOUD_SUN,  CLOUD_SUN,       cloud_sun);
+    WX_ICON(WX_CLOUD_MOON, CLOUD_MOON,      cloud_moon);
+    WX_ICON(WX_CLOUD,      CLOUD,           cloud);
+    WX_ICON(WX_FOG,        CLOUD_FOG,       cloud_fog);
+    WX_ICON(WX_DRIZZLE,    CLOUD_DRIZZLE,   cloud_drizzle);
+    WX_ICON(WX_RAIN,       CLOUD_RAIN,      cloud_rain);
+    WX_ICON(WX_SNOW,       CLOUD_SNOW,      cloud_snow);
+    WX_ICON(WX_THUNDER,    CLOUD_LIGHTNING, cloud_lightning);
+#undef WX_ICON
+}
+
+// WMO weather interpretation codes (Open-Meteo's `weather_code`).
+static int wx_icon_for(int code, bool day) {
+    if (code == 0)              return day ? WX_SUN : WX_MOON;
+    if (code <= 2)              return day ? WX_CLOUD_SUN : WX_CLOUD_MOON;
+    if (code == 3)              return WX_CLOUD;
+    if (code == 45 || code == 48) return WX_FOG;
+    if (code >= 51 && code <= 57) return WX_DRIZZLE;
+    if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return WX_RAIN;
+    if ((code >= 71 && code <= 77) || code == 85 || code == 86)   return WX_SNOW;
+    if (code >= 95)             return WX_THUNDER;
+    return WX_CLOUD;
+}
+
+static const char* wx_text_for(int code) {
+    switch (code) {
+    case 0:  return "Clear";
+    case 1:  return "Mostly clear";
+    case 2:  return "Partly cloudy";
+    case 3:  return "Overcast";
+    case 45: case 48: return "Fog";
+    case 51: return "Light drizzle";
+    case 53: case 55: return "Drizzle";
+    case 56: case 57: return "Freezing drizzle";
+    case 61: return "Light rain";
+    case 63: return "Rain";
+    case 65: return "Heavy rain";
+    case 66: case 67: return "Freezing rain";
+    case 71: return "Light snow";
+    case 73: return "Snow";
+    case 75: return "Heavy snow";
+    case 77: return "Snow grains";
+    case 80: return "Light showers";
+    case 81: return "Showers";
+    case 82: return "Heavy showers";
+    case 85: case 86: return "Snow showers";
+    case 95: return "Thunderstorm";
+    case 96: case 99: return "Thunderstorm, hail";
+    default: return "";
+    }
+}
+
+// The art is white; the sun takes the brand accent, everything else stays ivory.
+static void set_wx_icon(lv_obj_t* img, const lv_image_dsc_t* dscs, int icon) {
+    lv_image_set_src(img, &dscs[icon]);
+    lv_obj_set_style_image_recolor(img, icon == WX_SUN ? COL_ACCENT : COL_TEXT, 0);
+    lv_obj_set_style_image_recolor_opa(img, LV_OPA_COVER, 0);
+}
+
+// Show an icon at `px`, scaling the art when the layout asks for another size.
+static lv_obj_t* make_wx_icon(lv_obj_t* parent, const lv_image_dsc_t* dscs, int art_px, int px) {
+    lv_obj_t* img = lv_image_create(parent);
+    set_wx_icon(img, dscs, WX_CLOUD);
+    if (px != art_px) {
+        lv_obj_set_size(img, px, px);
+        lv_image_set_inner_align(img, LV_IMAGE_ALIGN_STRETCH);
+    }
+    return img;
+}
+
+static lv_obj_t* weather_container;
+static lv_obj_t* wx_title;
+static lv_obj_t* wx_icon;
+static lv_obj_t* wx_temp;
+static lv_obj_t* wx_cond;
+static lv_obj_t* wx_detail;
+static lv_obj_t* wx_tiles[WX_FORECAST_DAYS];
+static lv_obj_t* wx_tile_day[WX_FORECAST_DAYS];
+static lv_obj_t* wx_tile_icon[WX_FORECAST_DAYS];
+static lv_obj_t* wx_tile_temp[WX_FORECAST_DAYS];
+static bool      weather_received = false;
+static uint32_t  weather_ms = 0;
+
+static void init_weather_screen(lv_obj_t* scr) {
+    weather_container = make_screen_container(scr);
+    wx_title = make_screen_title(weather_container);
+
+    // Icon + big temperature, centered together as one row.
+    lv_obj_t* row = lv_obj_create(weather_container);
+    lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_set_style_pad_column(row, L.panel_pad_x, 0);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(row, LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_align(row, LV_ALIGN_TOP_MID, 0, L.wx_main_y);
+
+    wx_icon = make_wx_icon(row, wx_big_dscs, ICON_WX_SUN_120_W, L.wx_icon_px);
+    wx_temp = lv_label_create(row);
+    lv_label_set_text(wx_temp, "-");
+    lv_obj_set_style_text_font(wx_temp, L.wx_temp_font, 0);
+    lv_obj_set_style_text_color(wx_temp, COL_TEXT, 0);
+
+    wx_cond = lv_label_create(weather_container);
+    lv_label_set_text(wx_cond, "");
+    lv_obj_set_style_text_font(wx_cond, L.wx_cond_font, 0);
+    lv_obj_set_style_text_color(wx_cond, COL_TEXT, 0);
+    lv_obj_align(wx_cond, LV_ALIGN_TOP_MID, 0, L.wx_cond_y);
+
+    wx_detail = lv_label_create(weather_container);
+    lv_label_set_text(wx_detail, "");
+    lv_obj_set_style_text_font(wx_detail, L.wx_detail_font, 0);
+    lv_obj_set_style_text_color(wx_detail, COL_DIM, 0);
+    lv_obj_align(wx_detail, LV_ALIGN_TOP_MID, 0, L.wx_detail_y);
+
+    // Forecast: equal tiles across the content width.
+    const int gap = L.usage_panel_gap;
+    const int tile_w = (L.content_w - (WX_FORECAST_DAYS - 1) * gap) / WX_FORECAST_DAYS;
+    for (int i = 0; i < WX_FORECAST_DAYS; i++) {
+        lv_obj_t* tile = make_panel(weather_container, L.margin + i * (tile_w + gap),
+                                    L.wx_fc_y, tile_w, L.wx_fc_h);
+        wx_tiles[i] = tile;
+
+        wx_tile_day[i] = lv_label_create(tile);
+        lv_label_set_text(wx_tile_day[i], "");
+        lv_obj_set_style_text_font(wx_tile_day[i], L.wx_fc_font, 0);
+        lv_obj_set_style_text_color(wx_tile_day[i], COL_DIM, 0);
+        lv_obj_align(wx_tile_day[i], LV_ALIGN_TOP_MID, 0, 0);
+
+        wx_tile_icon[i] = make_wx_icon(tile, wx_small_dscs, ICON_WX_SUN_48_W, L.wx_fc_icon_px);
+        lv_obj_align(wx_tile_icon[i], LV_ALIGN_CENTER, 0, 0);
+
+        wx_tile_temp[i] = lv_label_create(tile);
+        lv_label_set_text(wx_tile_temp[i], "");
+        lv_label_set_recolor(wx_tile_temp[i], true);
+        lv_obj_set_style_text_font(wx_tile_temp[i], L.wx_fc_font, 0);
+        lv_obj_align(wx_tile_temp[i], LV_ALIGN_BOTTOM_MID, 0, 0);
+
+        lv_obj_add_flag(tile, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void ui_update_weather(const WeatherData* d) {
+    char buf[64];
+    set_screen_title(wx_title, d->location[0] ? d->location : "Weather");
+    set_wx_icon(wx_icon, wx_big_dscs, wx_icon_for(d->code, d->is_day));
+    snprintf(buf, sizeof(buf), "%ld\xC2\xB0", lroundf(d->temp));
+    lv_label_set_text(wx_temp, buf);
+    lv_label_set_text(wx_cond, wx_text_for(d->code));
+    snprintf(buf, sizeof(buf), "Feels %d\xC2\xB0  \xC2\xB7  H %d\xC2\xB0  L %d\xC2\xB0",
+             d->feels, d->hi, d->lo);
+    lv_label_set_text(wx_detail, buf);
+
+    for (int i = 0; i < WX_FORECAST_DAYS; i++) {
+        if (i >= d->n_days) {
+            lv_obj_add_flag(wx_tiles[i], LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        const WeatherDay* day = &d->days[i];
+        lv_label_set_text(wx_tile_day[i], day->day);
+        set_wx_icon(wx_tile_icon[i], wx_small_dscs, wx_icon_for(day->code, true));
+        snprintf(buf, sizeof(buf), "#faf9f5 %d\xC2\xB0#  #b0aea5 %d\xC2\xB0#", day->hi, day->lo);
+        lv_label_set_text(wx_tile_temp[i], buf);
+        lv_obj_clear_flag(wx_tiles[i], LV_OBJ_FLAG_HIDDEN);
+    }
+
+    weather_received = true;
+    weather_ms = lv_tick_get();
+}
+
+// ---- Stocks ----
+
+struct StockRow {
+    lv_obj_t* panel;
+    lv_obj_t* sym;
+    lv_obj_t* live;          // dot beside the symbol while the market is open
+    lv_obj_t* name;
+    lv_obj_t* base;          // previous close, dashed
+    lv_obj_t* spark;
+    lv_obj_t* price;
+    lv_obj_t* chg;
+    lv_point_precise_t base_pts[2];
+    lv_point_precise_t spark_pts[STOCK_HIST_MAX];
+    StockQuote q;
+    bool have;
+};
+static StockRow  stock_rows[STOCK_MAX];
+static lv_obj_t* stocks_container;
+static int       stock_count = 0;      // rows the daemon says it's sending
+static uint32_t  stock_ms = 0;
+
+static void init_stocks_screen(lv_obj_t* scr) {
+    stocks_container = make_screen_container(scr);
+    set_screen_title(make_screen_title(stocks_container), "Stocks");
+
+    for (int i = 0; i < STOCK_MAX; i++) {
+        StockRow* r = &stock_rows[i];
+        r->panel = make_panel(stocks_container, L.margin, 0, L.content_w, L.st_row_h);
+        lv_obj_set_style_pad_top(r->panel, L.st_pad_y, 0);
+        lv_obj_set_style_pad_bottom(r->panel, L.st_pad_y, 0);
+
+        r->sym = lv_label_create(r->panel);
+        lv_obj_set_style_text_font(r->sym, L.st_sym_font, 0);
+        lv_obj_set_style_text_color(r->sym, COL_TEXT, 0);
+        lv_obj_align(r->sym, LV_ALIGN_TOP_LEFT, 0, 0);
+
+        r->live = lv_obj_create(r->panel);
+        lv_obj_set_size(r->live, 8, 8);
+        lv_obj_set_style_radius(r->live, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(r->live, COL_ACCENT, 0);
+        lv_obj_set_style_bg_opa(r->live, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(r->live, 0, 0);
+        lv_obj_clear_flag(r->live, LV_OBJ_FLAG_CLICKABLE);
+
+        r->name = lv_label_create(r->panel);
+        lv_label_set_long_mode(r->name, LV_LABEL_LONG_DOT);
+        lv_obj_set_size(r->name, L.st_left_w, lv_font_get_line_height(L.st_name_font));   // one line, cut with "…"
+        lv_obj_set_style_text_font(r->name, L.st_name_font, 0);
+        lv_obj_set_style_text_color(r->name, COL_DIM, 0);
+        lv_obj_align(r->name, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+
+        r->base = lv_line_create(r->panel);
+        lv_obj_set_style_line_width(r->base, 1, 0);
+        lv_obj_set_style_line_color(r->base, COL_DIM, 0);
+        lv_obj_set_style_line_opa(r->base, LV_OPA_40, 0);
+        lv_obj_set_style_line_dash_width(r->base, 4, 0);
+        lv_obj_set_style_line_dash_gap(r->base, 4, 0);
+
+        r->spark = lv_line_create(r->panel);
+        lv_obj_set_style_line_width(r->spark, L.st_line_w, 0);
+        lv_obj_set_style_line_rounded(r->spark, true, 0);
+
+        r->price = lv_label_create(r->panel);
+        lv_obj_set_style_text_font(r->price, L.st_price_font, 0);
+        lv_obj_set_style_text_color(r->price, COL_TEXT, 0);
+        lv_obj_align(r->price, LV_ALIGN_TOP_RIGHT, 0, 0);
+
+        r->chg = lv_label_create(r->panel);
+        lv_obj_set_style_text_font(r->chg, L.st_chg_font, 0);
+        lv_obj_align(r->chg, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+
+        r->have = false;
+        lv_obj_add_flag(r->panel, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void format_price(char* buf, size_t len, const char* cur, float p) {
+    const char* sym = strcmp(cur, "USD") == 0 ? "$"
+                    : strcmp(cur, "EUR") == 0 ? "\xE2\x82\xAC"
+                    : strcmp(cur, "GBP") == 0 ? "\xC2\xA3"
+                    : strcmp(cur, "JPY") == 0 ? "\xC2\xA5"
+                    : nullptr;
+    char num[16];
+    snprintf(num, sizeof(num), p >= 10000.0f ? "%.0f" : "%.2f", p);
+    if (sym) snprintf(buf, len, "%s%s", sym, num);
+    else     snprintf(buf, len, "%s %s", cur, num);
+}
+
+// Lay out rows for `stock_count` and redraw each row that has a quote. Row
+// height shrinks so that STOCK_MAX rows still fit under the header.
+static void layout_stock_rows(void) {
+    const int n = stock_count;
+    if (n <= 0) return;
+    const int avail = L.scr_h - L.content_y - L.margin;
+    int h = (avail - (n - 1) * L.st_row_gap) / n;
+    if (h > L.st_row_h) h = L.st_row_h;
+    const int inner_h = h - 2 * L.st_pad_y;
+    const int spark_x = L.st_left_w + (L.content_w - 2 * L.panel_pad_x - L.st_left_w - L.st_spark_w) / 4;
+    const int spark_h = inner_h - 8;
+    const int spark_y = (inner_h - spark_h) / 2;
+
+    for (int i = 0; i < STOCK_MAX; i++) {
+        StockRow* r = &stock_rows[i];
+        if (i >= n || !r->have) {
+            lv_obj_add_flag(r->panel, LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        lv_obj_set_y(r->panel, L.content_y + i * (h + L.st_row_gap));
+        lv_obj_set_height(r->panel, h);
+
+        const StockQuote* q = &r->q;
+        char buf[32];
+        lv_label_set_text(r->sym, q->symbol);
+        lv_obj_align_to(r->live, r->sym, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
+        if (q->open) lv_obj_clear_flag(r->live, LV_OBJ_FLAG_HIDDEN);
+        else         lv_obj_add_flag(r->live, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(r->name, q->name);
+
+        format_price(buf, sizeof(buf), q->currency, q->price);
+        lv_label_set_text(r->price, buf);
+
+        const float pct = q->prev_close > 0 ? (q->price - q->prev_close) / q->prev_close * 100.0f : 0.0f;
+        const bool up = pct >= 0.0f;
+        snprintf(buf, sizeof(buf), "%s%.2f%%", up ? "+" : "\xE2\x88\x92", fabsf(pct));
+        lv_label_set_text(r->chg, buf);
+        lv_obj_set_style_text_color(r->chg, up ? COL_GREEN : COL_RED, 0);
+
+        // Sparkline: 0..99 → top..bottom of the plot box. Mid-session it only
+        // spans the elapsed share of the trading day, so the x axis is time.
+        const int pts = q->n_hist;
+        const int span_w = (L.st_spark_w - 1) * q->session_pct / 100;
+        for (int k = 0; k < pts; k++) {
+            r->spark_pts[k].x = pts > 1 ? k * span_w / (pts - 1) : 0;
+            r->spark_pts[k].y = (99 - q->hist[k]) * (spark_h - 1) / 99;
+        }
+        lv_line_set_points(r->spark, r->spark_pts, pts);
+        lv_obj_set_style_line_color(r->spark, up ? COL_GREEN : COL_RED, 0);
+        lv_obj_set_pos(r->spark, spark_x, spark_y);
+
+        const int by = (99 - q->baseline) * (spark_h - 1) / 99;
+        r->base_pts[0] = {0, by};
+        r->base_pts[1] = {L.st_spark_w - 1, by};
+        lv_line_set_points(r->base, r->base_pts, 2);
+        lv_obj_set_pos(r->base, spark_x, spark_y);
+
+        lv_obj_clear_flag(r->panel, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void ui_update_stock(const StockQuote* q) {
+    if (q->index < 0 || q->index >= STOCK_MAX) return;
+    stock_rows[q->index].q = *q;
+    stock_rows[q->index].have = true;
+    stock_count = q->count > STOCK_MAX ? STOCK_MAX : q->count;
+    stock_ms = lv_tick_get();
+    layout_stock_rows();
+}
+
+static bool screen_available(screen_t s) {
+    const uint32_t now = lv_tick_get();
+    switch (s) {
+    case SCREEN_WEATHER: return weather_received && now - weather_ms < EXTRA_STALE_MS;
+    case SCREEN_STOCKS:  return stock_count > 0 && now - stock_ms < EXTRA_STALE_MS;
+    default:             return true;
+    }
+}
+
 // ---- Attention: the mascot walk-on (splash_mascot_attention) plus the
 // message on the status line. Ends on a tap, after 2 minutes, or ui_hide_alert().
 static const uint32_t ALERT_TIMEOUT_MS = 120000;
@@ -583,6 +1117,9 @@ void ui_init(void) {
     init_battery_icons();
 
     init_usage_screen(scr);
+    init_weather_icons();
+    init_weather_screen(scr);
+    init_stocks_screen(scr);
     splash_init(scr);
 
     if (splash_get_root()) {
@@ -795,17 +1332,28 @@ static void apply_battery_visibility(void) {
 
 static void global_click_cb(lv_event_t* e) {
     (void)e;
-    if (current_screen == SCREEN_SPLASH) ui_show_screen(prev_non_splash_screen);
-    else                                  ui_show_screen(SCREEN_SPLASH);
+    ui_next_screen();
+}
+
+void ui_next_screen(void) {
+    int s = current_screen;
+    do {
+        s = (s + 1) % SCREEN_COUNT;
+    } while (!screen_available((screen_t)s));
+    ui_show_screen((screen_t)s);
 }
 
 void ui_show_screen(screen_t screen) {
     lv_obj_add_flag(usage_container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(weather_container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(stocks_container, LV_OBJ_FLAG_HIDDEN);
     splash_hide();
 
     switch (screen) {
     case SCREEN_SPLASH:  splash_show(); break;
     case SCREEN_USAGE:   lv_obj_clear_flag(usage_container, LV_OBJ_FLAG_HIDDEN); break;
+    case SCREEN_WEATHER: lv_obj_clear_flag(weather_container, LV_OBJ_FLAG_HIDDEN); break;
+    case SCREEN_STOCKS:  lv_obj_clear_flag(stocks_container, LV_OBJ_FLAG_HIDDEN); break;
     default: break;
     }
 
@@ -863,7 +1411,7 @@ void ui_update_battery(int percent, bool charging, bool usb_power) {
 
 void ui_show_alert(const char* message) {
     alert_active = true;
-    if (current_screen == SCREEN_SPLASH) ui_show_screen(SCREEN_USAGE);
+    if (current_screen != SCREEN_USAGE) ui_show_screen(SCREEN_USAGE);   // the message lives on the status line there
     splash_mascot_attention(true);
     lv_label_set_long_mode(lbl_anim, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_obj_set_width(lbl_anim, L.content_w);
