@@ -279,19 +279,46 @@ read_clock_setting() {
     esac
 }
 
-# --- Weather + stock screens (optional) --------------------------------------
-# Off until `weather_location` / `stocks` are set in the config. extras.py does
-# the fetching (stdlib only); each payload is its own write tagged "k", so the
-# firmware never mistakes it for usage. Writes are spaced a second apart so the
-# firmware's single RX slot has drained the previous one. They deliberately do
-# NOT touch LAST_WRITE_TS: the heartbeat must keep its usage cadence, since the
-# firmware's 90s freshness window only counts usage payloads.
+# --- Extra screens: pace, activity, status, system, weather, stocks ----------
+# extras.py builds each payload (stdlib only); each is its own write tagged
+# "k", so the firmware never mistakes it for usage. Writes are spaced a second
+# apart so the firmware's single RX slot has drained the previous one. They
+# deliberately do NOT touch LAST_WRITE_TS: the heartbeat must keep its usage
+# cadence, since the firmware's 90s freshness window only counts usage payloads.
+#   pace           (on)  after every poll: session sparkline + projection, week bars
+#   activity       (on)  every 30 s: live Claude Code sessions + today's tokens
+#   service_status (on)  every 5 min: status.claude.com incidents for the status line
+#   system_stats   (off) every 30 s: this machine's CPU / memory / temperature / disk
+#   weather_location / stocks (unset = off): see config.example
 EXTRAS_PY="$(dirname "$(readlink -f "$0")")/extras.py"
 WEATHER_INTERVAL=900   # Open-Meteo updates hourly; 15 min keeps "now" close
 STOCKS_INTERVAL=300
+ACTIVITY_INTERVAL=30
+STATUS_INTERVAL=300
+SYSTEM_INTERVAL=30
 EXTRAS_RETRY=120       # after a failed fetch, try again this much sooner
 LAST_WEATHER=0
 LAST_STOCKS=0
+LAST_ACTIVITY=0
+LAST_STATUS=0
+LAST_SYSTEM=0
+LAST_HISTORY_TS=0      # LAST_PAYLOAD_TS the pace payload was last built from
+
+# Like read_onoff_setting, but on unless the config says `$1 = off`.
+read_default_on() {
+    local val
+    val=$(read_config_string "$1" | tr '[:upper:]' '[:lower:]')
+    [ "$val" = "off" ] && echo "off" || echo "on"
+}
+
+# 12 or 24 for clock times the daemon formats itself (the pace screen's ETA).
+read_hour_format() {
+    case "$(read_clock_setting)" in
+        12) echo 12 ;;
+        24|off) echo 24 ;;
+        *) detect_hour_format ;;
+    esac
+}
 
 # Echo the raw value of a config key ($1), trimmed; empty if unset.
 read_config_string() {
@@ -307,8 +334,46 @@ write_extra() {
 }
 
 send_extras() {
-    local now loc spec out line sent
+    local now loc spec out line sent dirs
     now=$(date +%s)
+
+    # Pace: rebuilt from each fresh poll (not from heartbeats), ahead of the
+    # rest so the projection lands right after the numbers it extends.
+    if [ -n "$LAST_PAYLOAD" ] && (( LAST_PAYLOAD_TS > LAST_HISTORY_TS )) \
+        && [ "$(read_default_on pace)" = "on" ]; then
+        LAST_HISTORY_TS=$LAST_PAYLOAD_TS
+        if out=$(python3 "$EXTRAS_PY" history "$LAST_PAYLOAD" "$(read_hour_format)") && [ -n "$out" ]; then
+            write_extra "$out"
+        fi
+    fi
+
+    if [ "$(read_default_on activity)" = "on" ] && (( now - LAST_ACTIVITY >= ACTIVITY_INTERVAL )); then
+        dirs=$(read_config_dirs | paste -sd, -)
+        if out=$(python3 "$EXTRAS_PY" activity "$dirs" "$ALERT_SID") && [ -n "$out" ]; then
+            write_extra "$out" && LAST_ACTIVITY=$now
+        else
+            log "Activity scan failed"
+            LAST_ACTIVITY=$now
+        fi
+    fi
+
+    if [ "$(read_default_on service_status)" = "on" ] && (( now - LAST_STATUS >= STATUS_INTERVAL )); then
+        if out=$(python3 "$EXTRAS_PY" status) && [ -n "$out" ]; then
+            write_extra "$out" && LAST_STATUS=$now
+        else
+            log "Service status fetch failed"
+            LAST_STATUS=$(( now - STATUS_INTERVAL + EXTRAS_RETRY ))
+        fi
+    fi
+
+    if [ "$(read_onoff_setting system_stats)" = "on" ] && (( now - LAST_SYSTEM >= SYSTEM_INTERVAL )); then
+        if out=$(python3 "$EXTRAS_PY" system) && [ -n "$out" ]; then
+            write_extra "$out" && LAST_SYSTEM=$now
+        else
+            log "System stats failed"
+            LAST_SYSTEM=$now
+        fi
+    fi
 
     loc=$(read_config_string weather_location)
     if [ -n "$loc" ] && (( now - LAST_WEATHER >= WEATHER_INTERVAL )); then
@@ -746,7 +811,8 @@ while true; do
     # Poll loop: tick every $TICK seconds. Poll Anthropic when the
     # interval has elapsed OR when the ESP requested a refresh.
     LAST_POLL=0
-    LAST_WEATHER=0 LAST_STOCKS=0   # a fresh connection may be a rebooted device
+    # a fresh connection may be a rebooted device
+    LAST_WEATHER=0 LAST_STOCKS=0 LAST_ACTIVITY=0 LAST_STATUS=0 LAST_SYSTEM=0 LAST_HISTORY_TS=0
     while is_connected; do
         NOW=$(date +%s)
         NEW_INTERVAL=$(read_poll_interval)

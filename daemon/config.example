@@ -50,9 +50,33 @@ beep = off
 #   24   = show the clock, forced 24-hour  (e.g. 18:28)
 clock = off
 
+# Pace screen (Linux daemon): the current 5-hour window as a sparkline, where
+# you'll land at reset at your current pace ("Limit by 15:40"), and the last 7
+# days of weekly usage. The daemon keeps its own record of every poll in
+# ~/.config/claude-usage-monitor/usage-history.jsonl (8 days), so the week fills
+# in as it runs. Pro/Max accounts only. On by default.
+# pace = off
+
+# Activity screen (Linux daemon): your live Claude Code sessions (working /
+# waiting on you / idle) and today's tokens with their API-equivalent cost,
+# read from the transcripts in each config dir's projects/ folder. Nothing
+# leaves this machine except the summary sent to the device. On by default.
+# activity = off
+
+# Service status (Linux daemon): checks status.claude.com every 5 minutes; while
+# there's an incident the device's status line shows it with an amber/red dot.
+# On by default.
+# service_status = off
+
+# System screen (Linux daemon): this machine's CPU, memory, CPU temperature and
+# disk, every 30 seconds. Off by default.
+# system_stats = on
+
 # Weather screen (Linux daemon). A place name, looked up with Open-Meteo's
-# geocoder (no account, no key); refreshed every 15 minutes. If the lookup
-# picks the wrong place, pin it with weather_coords = <lat>, <lon>.
+# geocoder (no account, no key); refreshed every 15 minutes. Includes wind
+# (km/h), UV index, air quality (European AQI) and a rain-in-the-next-hour
+# nowcast on the status line. If the lookup picks the wrong place, pin it with
+# weather_coords = <lat>, <lon>.
 # Unset (default) = no weather screen.
 # weather_location = Ennetmoos
 # weather_coords = 46.956, 8.339
