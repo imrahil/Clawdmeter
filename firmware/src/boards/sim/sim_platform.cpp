@@ -2,6 +2,7 @@
 #include <SDL.h>
 #include <Arduino.h>
 #include <stdlib.h>
+#include <lvgl.h>
 
 static bool quit = false;
 
@@ -23,6 +24,33 @@ int  sim_battery_pct(void) { return no_battery ? -1 : battery; }
 bool sim_charging(void)    { return !no_battery && charging; }
 bool sim_vbus_in(void)     { return no_battery || charging; }
 bool sim_should_quit(void) { return quit; }
+
+struct ScriptEv { uint32_t at; char key; uint32_t dur; };
+static ScriptEv script[48];
+static int      n_script = -1;   // -1 = SIM_SCRIPT not parsed yet
+
+static void parse_script(void) {
+    n_script = 0;
+    const char* v = getenv("SIM_SCRIPT");
+    while (v && *v && n_script < (int)(sizeof(script) / sizeof(script[0]))) {
+        char* end;
+        long at = strtol(v, &end, 10);
+        if (*end != ':' || !end[1]) break;
+        const char k = end[1];
+        script[n_script++] = { (uint32_t)at, k, k == 'h' ? 900u : k == 't' ? 100u : 120u };
+        v = strchr(end, ',');
+        if (v) v++;
+    }
+}
+
+bool sim_script_held(char key) {
+    if (n_script < 0) parse_script();
+    const uint32_t now = millis();
+    for (int i = 0; i < n_script; i++) {
+        if (script[i].key == key && now >= script[i].at && now < script[i].at + script[i].dur) return true;
+    }
+    return false;
+}
 
 // Matches the AXP2101 long-press threshold main.cpp's pair gesture expects.
 #define PWR_LONG_MS 1500
@@ -60,6 +88,11 @@ void sim_pump(void) {
             edge_released = true;
         }
     }
+    static bool script_pwr = false;      // scripted PWR: a short press edge
+    const bool sp = sim_script_held('p');
+    if (sp && !script_pwr) { edge_pressed = true; edge_released = true; }
+    script_pwr = sp;
+
     if (pwr_down && !pwr_long_fired && millis() - pwr_down_ms >= PWR_LONG_MS) {
         pwr_long_fired = true;
         edge_long = true;
@@ -72,6 +105,10 @@ void sim_pump(void) {
         autoshot_ms = v ? atol(v) : -1;
     }
     if (autoshot_ms >= 0 && millis() >= (uint32_t)autoshot_ms) {
+        lv_mem_monitor_t mon;
+        lv_mem_monitor(&mon);
+        printf("[sim] LVGL pool: %u of %u bytes used, peak %u\n", (unsigned)(mon.total_size - mon.free_size),
+               (unsigned)mon.total_size, (unsigned)mon.max_used);
         const char* p = getenv("SIM_AUTOSHOT_PATH");
         sim_display_screenshot(p ? p : "sim-autoshot.bmp");
         quit = true;

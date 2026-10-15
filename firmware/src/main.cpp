@@ -12,6 +12,7 @@
 #include "idle.h"
 #include "idle_cfg.h"
 #include "brightness.h"
+#include "focus.h"
 
 #include "hal/board_caps.h"
 #include "hal/display_hal.h"
@@ -130,6 +131,10 @@ static void parse_weather(JsonDocument& doc, WeatherData* out) {
     out->hi     = doc["hi"] | 0;
     out->lo     = doc["lo"] | 0;
     strlcpy(out->sun, doc["sun"] | "", sizeof(out->sun));
+    out->wind = doc["ws"] | -1;
+    out->uv   = doc["uv"] | -1;
+    out->aqi  = doc["aq"] | -1;
+    strlcpy(out->rain, doc["rn"] | "", sizeof(out->rain));
     JsonArray f = doc["f"].as<JsonArray>();
     out->n_days = 0;
     for (JsonArray day : f) {
@@ -164,6 +169,66 @@ static bool parse_quote(JsonDocument& doc, StockQuote* out) {
         out->hist[out->n_hist++] = (uint8_t)(val < 0 ? 0 : val > 99 ? 99 : val);
     }
     return true;
+}
+
+// {"k":"h"} — pace (daemon/extras.py history_payload).
+static void parse_pace(JsonDocument& doc, PaceData* out) {
+    out->n_sess = 0;
+    for (JsonVariant v : doc["sh"].as<JsonArray>()) {
+        if (out->n_sess >= PACE_SESS_MAX) break;
+        int val = v | 0;
+        out->sess[out->n_sess++] = (uint8_t)(val < 0 ? 0 : val > 100 ? 100 : val);
+    }
+    out->frac = doc["fr"] | 100;
+    out->proj = doc["pr"] | -1;
+    out->zone = doc["pz"] | 0;
+    strlcpy(out->eta, doc["eta"] | "", sizeof(out->eta));
+    out->n_days = 0;
+    for (JsonArray day : doc["wd"].as<JsonArray>()) {
+        if (out->n_days >= PACE_DAYS) break;
+        PaceDay* d = &out->days[out->n_days++];
+        strlcpy(d->day, day[0] | "", sizeof(d->day));
+        d->pct = day[1] | -1;
+    }
+    out->week_proj = doc["wp"] | -1;
+}
+
+// {"k":"a"} — Claude Code activity (daemon/extras.py activity_payload).
+static void parse_activity(JsonDocument& doc, ActivityData* out) {
+    out->n_rows = 0;
+    for (JsonArray row : doc["ss"].as<JsonArray>()) {
+        if (out->n_rows >= ACT_ROWS_MAX) break;
+        ActivityRow* r = &out->rows[out->n_rows++];
+        strlcpy(r->name, row[0] | "", sizeof(r->name));
+        r->state = row[1] | 0;
+        strlcpy(r->label, row[2] | "", sizeof(r->label));
+        r->age_min = row[3] | 0;
+    }
+    out->live = doc["nl"] | out->n_rows;
+    out->tokens = doc["tk"] | 0.0;
+    out->cost_cents = doc["co"] | 0L;
+    out->sessions = doc["ns"] | 0;
+}
+
+// {"k":"sys"} — host stats (daemon/extras.py system_payload).
+static void parse_system(JsonDocument& doc, SystemData* out) {
+    strlcpy(out->host, doc["hn"] | "", sizeof(out->host));
+    out->cpu = doc["cpu"] | 0;
+    strlcpy(out->load, doc["ld"] | "", sizeof(out->load));
+    out->mem = doc["mem"] | 0;
+    strlcpy(out->mem_text, doc["mu"] | "", sizeof(out->mem_text));
+    out->temp = doc["tmp"] | -1;
+    out->disk = doc["dsk"] | 0;
+    strlcpy(out->disk_text, doc["du"] | "", sizeof(out->disk_text));
+    strlcpy(out->uptime, doc["up"] | "", sizeof(out->uptime));
+}
+
+// {"k":"ss"} — status.claude.com (daemon/extras.py status_payload).
+static void parse_service_status(JsonDocument& doc, ServiceStatus* out) {
+    const char* ind = doc["i"] | "none";
+    out->level = strcmp(ind, "major") == 0 || strcmp(ind, "critical") == 0 ? 2
+               : strcmp(ind, "none") == 0 ? 0 : 1;
+    strlcpy(out->msg, doc["m"] | "", sizeof(out->msg));
 }
 
 // ---- Serial command buffer ----
@@ -281,6 +346,37 @@ void setup() {
 
 static ble_state_t last_ble_state = BLE_STATE_INIT;
 
+// ---- +/- buttons ----
+// A short press navigates; holding past NAV_HOLD_MS sends the button's HID key
+// instead, held until release (BOOT: Space for voice-mode push-to-talk, KEY:
+// Shift+Tab mode toggle). The first press from sleep only wakes the panel.
+#define NAV_HOLD_MS 400
+
+struct NavButton {
+    bool     was = false;
+    bool     swallowed = false;   // this press woke the panel
+    bool     hid = false;         // held long enough: the HID key is down
+    uint32_t down_ms = 0;
+};
+
+static void nav_button_tick(NavButton& b, bool held, void (*on_short)(void),
+                            uint8_t hid_key, uint8_t hid_mods) {
+    const uint32_t now = millis();
+    if (held && !b.was) {
+        b.swallowed = idle_consume_wake_press();
+        b.hid = false;
+        b.down_ms = now;
+    } else if (held && !b.swallowed && !b.hid && now - b.down_ms >= NAV_HOLD_MS) {
+        b.hid = true;
+        ble_keyboard_press(hid_key, hid_mods);
+    } else if (!held && b.was) {
+        if (b.hid)              ble_keyboard_release();
+        else if (!b.swallowed)  on_short();
+        b.swallowed = b.hid = false;
+    }
+    b.was = held;
+}
+
 // Hold-to-pair gesture: hold the PWR button ~3s, then RELEASE → clear all BLE
 // bonds and re-advertise. Clearing on *release* (not while held) is deliberate:
 // holding to power the device OFF (AXP hardware shutdown at 8s) must not wipe
@@ -343,49 +439,29 @@ void loop() {
     if (!idle_is_asleep()) display_hal_tick();
 
     // ---- Physical buttons ----
-    //   PRIMARY   → HID Space  (Claude Code voice-mode PTT)
-    //   SECONDARY → HID Shift+Tab  (mode toggle; only if the board has one)
-    //   PWR       → on splash: cycle animations; on usage: cycle brightness;
+    //   PRIMARY   short: previous screen (-)  hold: HID Space (Claude Code voice-mode PTT)
+    //   SECONDARY short: next screen (+)      hold: HID Shift+Tab (mode toggle)
+    //   One-button boards: PRIMARY short = next screen.
+    //   PWR       → on splash: cycle animations; elsewhere: cycle brightness;
     //               hold ~3s + release: pairing mode
     // First press from sleep is consumed as a wake-only event by
     // idle_consume_wake_press(); the normal action fires from the second
     // press. Activity bookkeeping happens inside idle_consume_wake_press
     // so no separate idle_note_activity() call is needed here.
     {
-        static bool primary_was = false;
-        static bool primary_wake_swallowed = false;
-        bool primary_now = input_hal_is_held(INPUT_BTN_PRIMARY);
-        if (primary_now != primary_was) {
-            if (primary_now) {
-                if (idle_consume_wake_press()) primary_wake_swallowed = true;
-                else                            ble_keyboard_press(0x2C, 0);  // HID Space, no mods
-            } else {
-                if (primary_wake_swallowed) primary_wake_swallowed = false;
-                else                        ble_keyboard_release();
-            }
-            primary_was = primary_now;
-        }
-
-        if (board_caps().button_count >= 2) {
-            static bool secondary_was = false;
-            static bool secondary_wake_swallowed = false;
-            bool secondary_now = input_hal_is_held(INPUT_BTN_SECONDARY);
-            if (secondary_now != secondary_was) {
-                if (secondary_now) {
-                    if (idle_consume_wake_press()) secondary_wake_swallowed = true;
-                    else                            ble_keyboard_press(0x2B, 0x02);  // HID Tab + LEFT_SHIFT
-                } else {
-                    if (secondary_wake_swallowed) secondary_wake_swallowed = false;
-                    else                          ble_keyboard_release();
-                }
-                secondary_was = secondary_now;
-            }
+        const bool two = board_caps().button_count >= 2;
+        static NavButton primary, secondary;
+        nav_button_tick(primary, input_hal_is_held(INPUT_BTN_PRIMARY),
+                        two ? ui_prev_screen : ui_next_screen, 0x2C, 0);   // HID Space, no mods
+        if (two) {
+            nav_button_tick(secondary, input_hal_is_held(INPUT_BTN_SECONDARY),
+                            ui_next_screen, 0x2B, 0x02);                   // HID Tab + LEFT_SHIFT
         }
 
         if (power_hal_pwr_pressed()) {
             if (!idle_consume_wake_press()) {
-                // On splash: cycle animations. On the usage view: cycle
-                // screen brightness (single non-splash view, no more screens).
+                // On splash: cycle animations. Elsewhere: cycle screen
+                // brightness (the +/- buttons move between screens).
                 if (ui_get_current_screen() == SCREEN_SPLASH) splash_next();
                 else                                          brightness_cycle();
             }
@@ -414,6 +490,14 @@ void loop() {
         ui_update_battery(pct, charging, vbus);
     }
 
+    // Focus timer: a session or break just ended → chime, wake, show it.
+    if (focus_tick()) {
+        Serial.println("focus phase done — chime");
+        sound_hal_play_reset();
+        idle_note_activity();
+        ui_focus_finished();
+    }
+
     check_serial_cmd();
 
     if (ble_has_data()) {
@@ -427,6 +511,26 @@ void loop() {
             static WeatherData weather;
             parse_weather(doc, &weather);
             ui_update_weather(&weather);
+            ble_send_ack();
+        } else if (strcmp(kind, "h") == 0) {
+            static PaceData pace;
+            parse_pace(doc, &pace);
+            ui_update_pace(&pace);
+            ble_send_ack();
+        } else if (strcmp(kind, "a") == 0) {
+            static ActivityData act;
+            parse_activity(doc, &act);
+            ui_update_activity(&act);
+            ble_send_ack();
+        } else if (strcmp(kind, "sys") == 0) {
+            static SystemData sys;
+            parse_system(doc, &sys);
+            ui_update_system(&sys);
+            ble_send_ack();
+        } else if (strcmp(kind, "ss") == 0) {
+            ServiceStatus st;
+            parse_service_status(doc, &st);
+            ui_update_service_status(&st);
             ble_send_ack();
         } else if (strcmp(kind, "q") == 0) {
             static StockQuote quote;
@@ -448,6 +552,7 @@ void loop() {
                 Serial.println("session reset detected — chime");
                 sound_hal_play_reset();
             }
+            if (session_reset) splash_celebrate();   // Clawd jumps for joy on the splash
             // Claude Code hook fired on the host. Not gated on `chime`: the daemon
             // only sets `b` when that hook ran.
             if (usage.beep) {

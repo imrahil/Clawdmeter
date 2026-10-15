@@ -1,5 +1,6 @@
 #include "board.h"
 #include "../../hal/touch_hal.h"
+#include "sim_platform.h"
 #include <SDL.h>
 
 void touch_hal_init(void) {}
@@ -16,4 +17,9 @@ void touch_hal_read(uint16_t* x, uint16_t* y, bool* pressed) {
     *x = (uint16_t)mx;
     *y = (uint16_t)my;
     *pressed = (b & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+    if (sim_script_held('t') || sim_script_held('h')) {   // scripted tap / long press
+        *x = LCD_WIDTH / 2;
+        *y = LCD_HEIGHT / 2;
+        *pressed = true;
+    }
 }

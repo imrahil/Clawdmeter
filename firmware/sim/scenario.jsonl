@@ -1,7 +1,11 @@
 # Default sim scenario — one daemon payload per line, played in a loop.
 # Extra keys: "name" (window title), "hold_ms" (time on this state, default 3000).
 # Keys: space play/pause · arrows step · 1-9 jump · see boards/sim/board.h.
-{"name":"weather","hold_ms":200,"k":"wx","loc":"Ennetmoos","t":12.8,"fl":11,"c":2,"d":1,"hi":15,"lo":7,"f":[["Tue",80,16,8],["Wed",61,19,13],["Thu",3,18,12]],"sun":"Sunset 18:45"}
+{"name":"weather","hold_ms":200,"k":"wx","loc":"Ennetmoos","t":12.8,"fl":11,"c":2,"d":1,"hi":15,"lo":7,"f":[["Tue",80,16,8],["Wed",61,19,13],["Thu",3,18,12]],"sun":"Sunset 18:45","ws":14,"uv":3,"aq":22,"rn":"Rain in 30 min"}
+{"name":"pace","hold_ms":200,"k":"h","sh":[2,5,9,12,14,18,23,27,31,34,38,42],"fr":40,"pr":123,"pz":2,"eta":"16:49","wd":[["Fri",9],["Sat",-1],["Sun",3],["Mon",18],["Tue",22],["Wed",12],["Thu",8]],"wp":92}
+{"name":"activity","hold_ms":200,"k":"a","ss":[["Clawdmeter",2,"needs you",0],["api-server",1,"Edit",0],["dotfiles",1,"Bash",1],["website",0,"",23]],"nl":4,"tk":48213004,"co":2741,"ns":6}
+{"name":"system","hold_ms":200,"k":"sys","hn":"workstation","cpu":37,"ld":"2.41","nc":16,"mem":62,"mu":"19.8/32 GB","tmp":58,"dsk":71,"du":"680/954 GB","up":"3d 4h"}
+{"name":"service status","hold_ms":200,"k":"ss","i":"minor","m":"Elevated errors on Claude Opus 5.5"}
 {"name":"quote AMD","hold_ms":200,"k":"q","i":0,"n":3,"sy":"AMD","nm":"Advanced Micro","cu":"USD","p":591.75,"pc":608.1,"o":1,"h":[51,44,27,12,7,5,6,0,19,27,30,24,26,17,24,25],"b":99,"fr":62}
 {"name":"quote NVDA","hold_ms":200,"k":"q","i":1,"n":3,"sy":"NVDA","nm":"NVIDIA","cu":"USD","p":226.44,"pc":229.28,"o":1,"h":[58,44,0,3,3,18,15,11,18,31,36,28,29,23,31,32],"b":99,"fr":62}
 {"name":"quote R3NK","hold_ms":200,"k":"q","i":2,"n":3,"sy":"R3NK","nm":"Renk","cu":"EUR","p":34.69,"pc":34.04,"o":0,"h":[58,79,83,9,21,33,18,14,8,14,3,8,26,32,48,62,74,76,98,97,89,85,68,62,30,31,17,9,60,69,62,99],"b":0,"fr":100}

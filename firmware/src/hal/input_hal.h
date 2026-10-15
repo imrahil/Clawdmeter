@@ -4,11 +4,13 @@
 // Physical button abstraction. Boards report up to two screen-independent
 // buttons:
 //   PRIMARY   — left button on this project's boards (BOOT / GPIO 0).
-//               Drives the Claude Code voice-mode PTT (HID Space).
+//               Short press: previous screen (next on one-button boards);
+//               held: the Claude Code voice-mode PTT (HID Space).
 //   SECONDARY — right button on boards that have one (e.g. GPIO 18 on
-//               AMOLED-2.16). Drives mode-toggle (HID Shift+Tab). Boards
-//               without it report held=false forever and shared code
-//               handles that gracefully via BoardCaps.button_count.
+//               AMOLED-2.16). Short press: next screen; held: mode-toggle
+//               (HID Shift+Tab). Boards without it report held=false
+//               forever and shared code handles that gracefully via
+//               BoardCaps.button_count.
 //
 // The PWR button is owned by power_hal (it's tied to the PMU on some boards
 // and to an IO expander on others — see power_hal_pwr_pressed()).

@@ -25,3 +25,8 @@ void sim_playback_toggle(void);
 void sim_playback_step(int dir);
 void sim_playback_jump(int idx);      // 0-based
 void sim_playback_toggle_link(void);  // BLE connected <-> disconnected
+
+// Scripted input for headless runs: SIM_SCRIPT="<ms>:<key>,..." holds a key
+// from <ms> after launch — b / n (buttons, 120 ms), t (tap at the centre,
+// 100 ms), h (long press at the centre, 900 ms), p (PWR short press).
+bool sim_script_held(char key);
