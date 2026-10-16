@@ -31,6 +31,14 @@ The device boots into the splash. The screens, in button order: splash → Usage
 | ![Focus](screenshots/focus.png)   | ![System](screenshots/system.png) | ![Weather](screenshots/weather.png)     | ![Stocks](screenshots/stocks.png)   |
 | Pomodoro timer, on the device     | Your computer's CPU, memory, temperature, disk (optional) | Now + 3-day forecast (optional) | Your tickers, intraday (optional) |
 
+The layouts adapt to the panel. The same screens on the 368×448 boards (AMOLED-1.8, S3 and C6):
+
+![Screens at 368×448](screenshots/compact_368x448.png)
+
+and on the 240×240 LCD-1.54:
+
+![Screens at 240×240](screenshots/small_240x240.png)
+
 The status line at the bottom of each screen carries that screen's live fact (the reset countdown, who needs you, rain in the next hour…). While [status.claude.com](https://status.claude.com) reports an incident, it alternates with the incident name behind an amber (minor) or red (major) dot.
 
 While the splash is up, the middle (PWR) button cycles animations. **Hold the power button for 3 seconds, then release, to put the device into pairing mode** — this clears the saved Bluetooth bond and re-advertises. The firmware also auto-rotates animations every 20 s within the current usage-rate group, so a long stretch on the splash isn't just one Clawd on loop.
