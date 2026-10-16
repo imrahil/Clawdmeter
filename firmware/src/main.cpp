@@ -30,6 +30,9 @@
 #include "hal/imu_hal.h"
 #include "hal/sound_hal.h"
 #include "hal/board_info_hal.h"
+#include "pages.h"
+#include "focus.h"
+#include "weather.h"
 
 static UsageData usage = {};
 
@@ -224,6 +227,17 @@ static void check_serial_cmd() {
                 if (cmd_buf[11] == ' ') pace_marker_set(atoi(cmd_buf + 12) != 0);
                 Serial.printf("{\"pace_marker\":%s}\n", pace_marker_get() ? "true" : "false");
             }
+            else if (strncmp(cmd_buf, "page ", 5) == 0) {
+                // QA: `page next|prev|meters|weather|focus` (the side buttons' job).
+                const char* p = cmd_buf + 5;
+                if      (strcmp(p, "next") == 0)    pages_next();
+                else if (strcmp(p, "prev") == 0)    pages_prev();
+                else if (strcmp(p, "meters") == 0)  pages_show(PAGE_METERS);
+                else if (strcmp(p, "weather") == 0) pages_show(PAGE_WEATHER);
+                else if (strcmp(p, "focus") == 0)   pages_show(PAGE_FOCUS);
+                static const char* const NAMES[] = { "meters", "weather", "focus" };
+                Serial.printf("{\"page\":\"%s\"}\n", NAMES[pages_current()]);
+            }
             else if (strncmp(cmd_buf, "clawd ", 6) == 0) {
                 const bool ok = director_debug(cmd_buf + 6);
                 Serial.printf("{\"clawd\":\"%s\",\"ok\":%s}\n", cmd_buf + 6, ok ? "true" : "false");
@@ -287,6 +301,7 @@ void setup() {
     ui_update_ble_status(ble_get_state(), ble_get_device_name(), ble_get_mac_address());
     ui_update_battery(power_hal_battery_pct(), power_hal_is_charging(), power_hal_is_vbus_in());
     director_init();    // rooms + beats; boots on the meters (home)
+    pages_init();       // Weather / Focus pages over the meters (side buttons)
     clawd_prefs_init();  // the saved device settings, before the app says otherwise
 
     Serial.printf("Dashboard ready (%s, %dx%d) %lu ms after boot, waiting for data on BLE...\n",
@@ -294,6 +309,39 @@ void setup() {
 }
 
 static ble_state_t last_ble_state = BLE_STATE_INIT;
+
+// ---- Side buttons on boards with two (pages.h) ----
+// A short press turns the page (BOOT back, KEY forward); held past
+// NAV_HOLD_MS it sends the button's HID key instead, held until release
+// (BOOT: Space for voice-mode push-to-talk, KEY: Shift+Tab mode toggle). The
+// first press from sleep only wakes the panel; on a touchless board BOOT
+// dismisses an alert first. One-button boards keep BOOT as push-to-talk.
+#define NAV_HOLD_MS 400
+
+struct NavButton {
+    bool     was = false;
+    bool     swallowed = false;   // this press woke the panel or dismissed an alert
+    bool     hid = false;         // held long enough: the HID key is down
+    uint32_t down_ms = 0;
+};
+
+static void nav_button_tick(NavButton& b, bool held, bool main_button, void (*on_short)(void),
+                            uint8_t hid_key, uint8_t hid_mods) {
+    const uint32_t now = millis();
+    if (held && !b.was) {
+        b.hid = false;
+        b.down_ms = now;
+        b.swallowed = idle_consume_wake_press() || director_button(main_button);
+    } else if (held && !b.swallowed && !b.hid && now - b.down_ms >= NAV_HOLD_MS) {
+        b.hid = true;
+        ble_keyboard_press(hid_key, hid_mods);
+    } else if (!held && b.was) {
+        if (b.hid)             ble_keyboard_release();
+        else if (!b.swallowed) on_short();
+        b.swallowed = b.hid = false;
+    }
+    b.was = held;
+}
 static int shown_group = 0;   // mood group last logged
 
 // Hold-to-pair gesture: hold the PWR button ~3s, then RELEASE → clear all BLE
@@ -378,22 +426,35 @@ void loop() {
     performer_tick();
     mascot_tick();
     director_tick();
+    pages_tick();
     if (director_take_dismissed()) ble_send_dismiss();
+    // Focus timer: a session or a break just ended → the ding, wake, show it.
+    if (focus_tick(millis())) {
+        Serial.println("focus phase over — chime");
+        sound_hal_chime();
+        idle_note_activity();
+        pages_focus_finished();
+    }
     // Rotation transition (blank + ramp) would fight the idle fade — skip
     // ticks while the panel is dark. A rotation that happens during sleep
     // is detected by the next tick after wake and ramped in then.
     if (!idle_is_asleep()) display_hal_tick();
 
     // ---- Physical buttons ----
-    //   PRIMARY   → HID Space  (Claude Code voice-mode PTT)
-    //   SECONDARY → HID Shift+Tab  (mode toggle; only if the board has one)
+    //   Two side buttons: short press turns the page (PRIMARY back,
+    //   SECONDARY forward); held, HID Space (Claude Code voice-mode PTT) /
+    //   HID Shift+Tab (mode toggle). One button: PRIMARY is push-to-talk.
     //   PWR       → cycle brightness; hold ~3s + release: pairing mode
     // Any press also tells the director you're here (wakes the screensaver).
     // First press from sleep is consumed as a wake-only event by
     // idle_consume_wake_press(); the normal action fires from the second
     // press. Activity bookkeeping happens inside idle_consume_wake_press
     // so no separate idle_note_activity() call is needed here.
-    {
+    if (board_caps().button_count >= 2) {
+        static NavButton primary, secondary;
+        nav_button_tick(primary, input_hal_is_held(INPUT_BTN_PRIMARY), true, pages_prev, 0x2C, 0);           // HID Space
+        nav_button_tick(secondary, input_hal_is_held(INPUT_BTN_SECONDARY), false, pages_next, 0x2B, 0x02);   // HID Tab + LEFT_SHIFT
+    } else {
         static bool primary_was = false;
         static bool primary_wake_swallowed = false;
         bool primary_now = input_hal_is_held(INPUT_BTN_PRIMARY);
@@ -410,23 +471,8 @@ void loop() {
             }
             primary_was = primary_now;
         }
-
-        if (board_caps().button_count >= 2) {
-            static bool secondary_was = false;
-            static bool secondary_wake_swallowed = false;
-            bool secondary_now = input_hal_is_held(INPUT_BTN_SECONDARY);
-            if (secondary_now != secondary_was) {
-                if (secondary_now) {
-                    if (idle_consume_wake_press()) secondary_wake_swallowed = true;
-                    else { ble_keyboard_press(0x2B, 0x02); director_button(false); }  // HID Tab + LEFT_SHIFT
-                } else {
-                    if (secondary_wake_swallowed) secondary_wake_swallowed = false;
-                    else                          ble_keyboard_release();
-                }
-                secondary_was = secondary_now;
-            }
-        }
-
+    }
+    {
         if (power_hal_pwr_pressed()) {
             if (!idle_consume_wake_press()) {
                 // Counts as you being here. On a touchless board whose only
@@ -463,7 +509,18 @@ void loop() {
     check_serial_cmd();
 
     if (ble_has_data()) {
-        if (parse_json(ble_get_data(), &usage)) {
+        const char* json = ble_get_data();   // takes the write: read it once
+        static WeatherData wx;
+        if (weather_is_payload(json)) {
+            // The Weather page's write: never a usage update (no freshness,
+            // no rate sample).
+            if (weather_parse(json, &wx)) {
+                pages_update_weather(&wx);
+                ble_send_ack();
+            } else {
+                ble_send_nack();
+            }
+        } else if (parse_json(json, &usage)) {
             // Fast + slow clock bookkeeping: rate sample (replays skipped),
             // hook activity lift, event dedupe. See signals.h.
             const SignalsUpdate sig = signals_ingest(&usage);
@@ -500,6 +557,7 @@ void loop() {
             if (usage.alert_msg[0]) {
                 Serial.println("attention — mascot");
                 idle_note_activity();
+                pages_show(PAGE_METERS);      // an alert always lands on the meters
                 director_alert(usage.alert_msg);
             }
             if (usage.alert_clear) director_alert_clear();

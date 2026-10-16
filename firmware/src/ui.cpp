@@ -474,6 +474,21 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_obj_align(lbl_anim, LV_ALIGN_BOTTOM_MID, 0, L.status_y);
 }
 
+static lv_obj_t* page_layer = nullptr;
+
+const Layout& ui_layout(void) { return L; }
+lv_obj_t* ui_page_layer(void) { return page_layer; }
+
+void ui_set_meters_hidden(bool hidden) {
+    if (hidden) {
+        lv_obj_add_flag(usage_container, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(page_layer, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(page_layer, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(usage_container, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 // ---- Attention message on the status line (the director sequences the rest).
 static bool alert_active = false;
 static const char* still_shown = nullptr;   // minimal mode: status word on screen
@@ -501,6 +516,17 @@ void ui_init(void) {
     init_battery_icons();
 
     init_usage_screen(scr);
+
+    // Pages (pages.h) draw here: above the meters, below the battery, the
+    // corner Clawd and the performer, which are all created after it.
+    page_layer = lv_obj_create(scr);
+    lv_obj_set_size(page_layer, L.w, L.h);
+    lv_obj_set_pos(page_layer, 0, 0);
+    lv_obj_set_style_bg_opa(page_layer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(page_layer, 0, 0);
+    lv_obj_set_style_pad_all(page_layer, 0, 0);
+    lv_obj_clear_flag(page_layer, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+    lv_obj_add_flag(page_layer, LV_OBJ_FLAG_HIDDEN);
 
     battery_img = lv_image_create(scr);
     lv_image_set_src(battery_img, &battery_dscs[0]);

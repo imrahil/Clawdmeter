@@ -54,6 +54,16 @@ invalidates only the cells that changed.
 
 ![A show on the meters (simulator)](../screenshots/director/06-show-scene.png)
 
+**Under a page.** The Weather and Focus pages (`firmware/src/pages.h`) take
+the meters' cards, title and status line; the corner Clawd's seat stays.
+`director_set_covered(true)` ends whatever was staged at once (the page
+change is the cut: face hidden, performer off stage, Clawd seated) and holds
+him there, still: no idle acts or lurk trips, no show, screensaver or peek,
+and a tap is the page's. The QA beats refuse to start. An alert never runs
+covered: `main.cpp` closes the page first. `test/test_director` fuzzes page
+changes along with everything else and fails if anything but the seated
+corner Clawd is up while covered.
+
 Continuity rules, as the code enforces them:
 
 - There is only ever one Clawd. The corner sprite, the full-size sprite, the

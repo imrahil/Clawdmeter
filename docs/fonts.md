@@ -28,6 +28,26 @@ for size in 32 18; do
 done
 ```
 
+The Weather page adds a digits-only temperature font and symbols-only
+fallbacks for the ASCII text fonts (`page_fonts.cpp` attaches them with
+`with_symbols()`):
+
+```bash
+# Big temperature: '-', digits, '°'
+for size in 96 72; do
+  lv_font_conv --font assets/StyreneB-Regular.otf -r 0x2D,0x30-0x39,0xB0 \
+    --size $size --format lvgl --bpp 4 --no-compress \
+    -o firmware/src/font_styrene_temp_${size}.c --lv-include "lvgl.h"
+done
+
+# Symbols fallback: £ ¥ ° · € −
+for size in 12 14 16 20 24 28 48; do
+  lv_font_conv --font assets/StyreneB-Regular.otf -r 0xA3,0xA5,0xB0,0xB7,0x20AC,0x2212 \
+    --size $size --format lvgl --bpp 4 --no-compress \
+    -o firmware/src/font_sym_${size}.c --lv-include "lvgl.h"
+done
+```
+
 Keep `--no-compress`. This converter emits the LVGL 8 structure layout;
 match the generated files to the LVGL 9 structures used in this repository:
 

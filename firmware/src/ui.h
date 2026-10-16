@@ -1,6 +1,7 @@
 #pragma once
 #include "data.h"
 #include "ble.h"
+#include "layout.h"
 
 // The meters room: clock, the two usage cards, the status line, battery and
 // the corner Clawd's seat. Rooms, transitions and attention sequencing belong
@@ -31,3 +32,13 @@ void ui_set_pair_hint(PairHint hint);
 // Attention message on the status line (scrolls when long); NULL clears it
 // and the whimsical status line resumes.
 void ui_set_alert_text(const char* message);
+
+// ---- Pages (pages.h) ----
+// The meters' layout, for pages that sit in the same slots (title, cards,
+// status line).
+const Layout& ui_layout(void);
+// A full-size layer between the meters and the corner Clawd / battery:
+// pages build into it, so he and the battery stay on top.
+lv_obj_t* ui_page_layer(void);
+// Hide the meters' own title, cards and status line while a page is up.
+void ui_set_meters_hidden(bool hidden);

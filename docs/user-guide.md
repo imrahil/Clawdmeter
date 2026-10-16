@@ -162,15 +162,43 @@ If updates stop, the meters dim. The last reading is retained rather than
 replaced with zero. See [Clawd's director](clawd-director.md) for timing
 and character rules.
 
+### Pages: Weather and Focus
+
+| Weather | Focus |
+| --- | --- |
+| ![Weather](../screenshots/pages/weather.png) | ![Focus](../screenshots/pages/focus.png) |
+| Now, the next three days, rain in the next hour | A focus timer on the device |
+
+On boards with two side buttons, a short press on the secondary button
+turns to the next page and on BOOT to the previous one: meters → Weather →
+Focus → meters. The page takes the meters' place; Clawd stays in his seat.
+(Simulator captures.)
+
+- **Weather** appears once the app has a place to look up: set
+  `weather_location` in the config (below). It shows the temperature and
+  condition, feels-like and today's high and low, wind in km/h, the UV index
+  and air quality, and three forecast tiles; the status line says when rain
+  is coming in the next hour, otherwise the next sunrise or sunset. Data from
+  [Open-Meteo](https://open-meteo.com), refreshed every 15 minutes.
+- **Focus** needs nothing from the app: 25 minutes of focus, then a
+  5-minute break (15 minutes after every fourth). Tap to start or pause,
+  hold to reset or skip a break; holding again while it's ready starts the
+  cycle of four over. At the end of each one the device dings, wakes and
+  shows the page.
+
+A page goes back to the meters after 2 minutes without a touch or a button
+(Focus not while it runs), and an alert always brings the meters back.
+
 ### Buttons
 
 | Button | Action |
 | --- | --- |
-| BOOT | Hold to send Space to the focused window, for Claude Code voice input. GPIO 0 on S3; GPIO 9 on C6. |
-| Secondary, where fitted | Send Shift+Tab to the focused window. S3 2.16: GPIO 18; C6 2.16: GPIO 10; LCD-1.54: GPIO 5. |
+| BOOT | Hold to send Space to the focused window, for Claude Code voice input; on two-button boards push-to-talk starts after 0.4 s and a short press turns back a page. GPIO 0 on S3; GPIO 9 on C6. |
+| Secondary, where fitted | Short press: next page. Hold: send Shift+Tab to the focused window. S3 2.16: GPIO 18; C6 2.16: GPIO 10; LCD-1.54: GPIO 5. |
 | PWR, where software-controlled | Short press: brightness. Hold about 3 seconds and release: clear pairing. |
 
 The LCD-4 has one user button, BOOT. Its PWR key is a hardware reset.
+One-button boards have no pages.
 
 ## Settings and files
 
@@ -195,6 +223,8 @@ seconds and preserves comments and unknown keys when saving.
 | `claude_path` | found on `PATH` | Full path to the Claude Code executable, if detection fails. |
 | `update_check` | `on` | Check for firmware releases daily. |
 | `alert_on` | `permission, question, elicitation` | Which waits alert on the device and tray: `permission`, `question`, `idle`, `elicitation` (MCP input), or `none`. Set on the Hooks page. Other notification types follow `permission`. |
+| `weather_location` | unset | A place name for the device's Weather page, looked up with Open-Meteo's geocoder (no account or key). Unset: no Weather page. |
+| `weather_coords` | unset | `lat, lon` to pin the place when the lookup picks the wrong one; `weather_location` is then shown as written. |
 | `release_repo` | `HermannBjorgvin/Clawdmeter` | GitHub repository used for firmware releases. |
 | `onboarding_done` | unset | `true` after setup is finished or skipped. |
 

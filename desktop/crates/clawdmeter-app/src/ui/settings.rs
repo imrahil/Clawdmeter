@@ -1300,6 +1300,10 @@ const CONFIG_TEMPLATE: &str = "\
 # claude_path = /path/to/claude
 # config_dirs = ~/.claude, ~/.claude-work
 # heartbeat_interval = 60
+# The device's Weather page (Open-Meteo, no account): a place name, optionally
+# pinned with coordinates when the lookup picks the wrong one.
+# weather_location = Warsaw
+# weather_coords = 52.23, 21.01
 ";
 
 /// Open the config file in the system editor, creating it first if needed.

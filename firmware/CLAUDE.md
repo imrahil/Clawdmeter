@@ -38,10 +38,24 @@ pins and hardware gotchas, which loads when you work in that folder.
   fits, then shape rules (narrow, tall, short, round). Strings it sizes for
   are in `ui_text.h`. Never branch on a board or exact size; add a shape rule
   and a `test_layout` panel (`docs/porting/adding-a-board.md`).
+- **Pages** (`pages.{h,cpp}`, `page_weather.cpp`, `page_focus.cpp`): full
+  views in the meters' place, reached with the side buttons on two-button
+  boards (short press BOOT back / KEY forward; held past 400 ms the button
+  sends its HID key instead: `nav_button_tick()` in `main.cpp`). Order:
+  meters → Weather (once the app has sent `{"k":"wx"}`, `weather.cpp`) →
+  Focus (`focus.cpp`, a device-local Pomodoro) → meters. A page is built
+  into `ui_page_layer()` (above the meters, below the corner Clawd and the
+  battery) when it opens and deleted when it closes, and lays out inside the
+  meters' card area (`page_area()`), so it fits every panel shape. While one
+  is up the director is covered (`director_set_covered`): Clawd sits still
+  in his seat, nothing else stages, taps belong to the page. An alert closes
+  the page first; a page left alone 2 min goes back to the meters (Focus not
+  while it runs). Serial `page next|prev|meters|weather|focus` for QA.
 - **Sound**: `ding.cpp` synthesizes the one sound (a C#5 ding, mirrored by
   the desktop's `chime.rs`); `chime.cpp` streams it through the ES8311.
 - **Generated, never hand-edited**: `splash_animations.h` (only
-  `clawd_anim.cpp` includes it), `font_*.c`. Regenerate with the
+  `clawd_anim.cpp` includes it), `font_*.c`, `weather_icons.h`
+  (`tools/gen_weather_icons.sh`, Lucide). Regenerate with the
   `regenerating-firmware-assets` skill.
 - **Tests**: `firmware/test/test_*`, native, run with
   `pio test -d firmware -e native`. Keep pure logic (parsing, signals,

@@ -35,6 +35,7 @@ static const char* const BEAT_NAMES[] = {
 };
 
 static Beat     beat = B_HOME;
+static bool     covered = false;      // a page is over the meters (director_set_covered)
 static uint8_t  step = 0;
 static uint32_t wait_until = 0;
 static bool     performing = false;   // he's out as the performer on the meters
@@ -82,7 +83,7 @@ static void go(Beat b) {
     beat = b;
     step = 0;
     wait_until = now_ms();
-    mascot_autonomy(b == B_HOME && !minimal && clawd_tuning().idle_acts);
+    mascot_autonomy(b == B_HOME && !minimal && !covered && clawd_tuning().idle_acts);
 }
 
 void director_set_trace(bool on) { trace = on; }
@@ -247,6 +248,7 @@ static void tap_home(int x) {
 void director_tap(int x) {
     engage();
     if (attention_on) { end_attention(ATTN_END_TAP); return; }   // a dismissing tap does nothing else
+    if (covered) return;                          // the page's tap (pages.cpp), not the aquarium's
     resume_screensaver = false;                   // "show me the meters" wins
     if (minimal) return;
     if (beat == B_HOME || beat == B_CORNER) {
@@ -269,6 +271,34 @@ void director_tap(int x) {
 
 void director_set_pairing_touch(bool on) { pairing_touch = on; }
 
+void director_set_covered(bool on) {
+    if (on == covered) return;
+    covered = on;
+    engage();                                 // turning a page is you being here
+    Serial.printf("[%lu] director: %s\n", (unsigned long)now_ms(), on ? "covered by a page" : "uncovered");
+    if (!on) {                                // the meters are back: he carries on
+        mascot_autonomy(beat == B_HOME && !minimal && clawd_tuning().idle_acts);
+        return;
+    }
+    // Under a page he sits still in his seat: no acts, no lurk trip across
+    // it, nothing full size.
+    react_anim = NULL;
+    resume_screensaver = false;
+    face_hide_now();
+    if (performing) {
+        performer_place_offstage(PERFORMER_LEFT);
+        performing = false;
+    }
+    if (!attention_on) {
+        mascot_reset();                       // seated now: one Clawd, in his seat
+        beat = B_HOME;                        // no transition: the page is the cut
+        step = 0;
+    }
+    mascot_autonomy(false);
+}
+
+bool director_alerting(void) { return attention_on; }
+
 bool director_button(bool main_button) {
     engage();
     if (main_button && attention_on && !board_caps().has_touch) {
@@ -290,7 +320,7 @@ void director_set_liveliness(int level) {
     if (!t.reactions) { react_anim = NULL; joy_pending = false; }
     if (!t.screensaver) resume_screensaver = false;
     if ((beat == B_SHOW && !t.shows) || (beat == B_SCREENSAVER && !t.screensaver)) to_meters(false);
-    mascot_autonomy(beat == B_HOME && !minimal && t.idle_acts);
+    mascot_autonomy(beat == B_HOME && !minimal && !covered && t.idle_acts);
 }
 
 static void indev_cb(lv_event_t* e) {
@@ -357,7 +387,7 @@ static void apply_minimal(bool on) {
     // dismissing tap keep working across the switch.
     beat = attention_on ? B_ATTENTION : B_HOME;
     step = 0;
-    mascot_autonomy(!on && !attention_on);
+    mascot_autonomy(!on && !attention_on && !covered);
     if (attention_on && attn_anim_running(now_ms())) mascot_attention(true);
     Serial.printf("director: minimal %s\n", on ? "on" : "off");
 }
@@ -645,6 +675,7 @@ static void run_home(uint32_t now) {
         if ((uint32_t)(now - joy_at) > clawd_tuning().joy_pending_ms) joy_pending = false;
         else if (mascot_act("jumping happy", 2)) { joy_pending = false; go(B_CORNER); return; }
     }
+    if (covered) return;                          // a page is up: he idles in his seat
     const bool live = ui_meters_live();
     QuietInput q = { now, last_engagement, signals_hooks_seen(), window_not_started, live };
     if (screensaver_ready(&q, &clawd_tuning())) { go(B_SCREENSAVER); return; }
@@ -682,6 +713,7 @@ bool director_debug(const char* name) {
         if (!minimal) to_meters(false);
         return true;
     }
+    if (covered) return false;            // a page is up: close it first (pages.h)
     if (strcmp(name, "attention") == 0)   { director_alert("Clawdmeter test alert"); return true; }
     if (minimal) return true;             // nothing else exists in minimal mode
     if (strcmp(name, "joy") == 0) {

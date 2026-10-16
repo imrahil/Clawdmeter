@@ -85,6 +85,21 @@ portable archives, and Nix setup.
 
 ![Clawdmeter desktop app showing device status and usage](desktop/docs/screenshots/overview.png)
 
+## Weather and Focus pages
+
+Two extra pages on boards with two side buttons: **Weather** (set
+`weather_location = <place>` in the config; data from Open-Meteo) and
+**Focus**, a Pomodoro timer on the device. A short press on the side buttons
+turns the page; holding them still sends Space and Shift+Tab. See the
+[user guide](docs/user-guide.md#pages-weather-and-focus).
+
+| Weather | Focus |
+| --- | --- |
+| ![Weather page (simulator)](screenshots/pages/weather.png) | ![Focus page (simulator)](screenshots/pages/focus.png) |
+
+Weather data by [Open-Meteo.com](https://open-meteo.com) (CC BY 4.0); weather
+icons from [Lucide](https://lucide.dev) (ISC).
+
 ## Docs
 
 - [User guide](docs/user-guide.md): setup, device controls, settings, and connection help.

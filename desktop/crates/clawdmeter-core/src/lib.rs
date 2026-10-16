@@ -15,6 +15,7 @@
 //! * [`payload`]: the JSON the firmware parses.
 //! * [`rate`]: the slow-clock mood.
 //! * [`engine`]: all of the above as one I/O-free state machine.
+//! * [`weather`]: the device's Weather page (Open-Meteo), its own write.
 //! * [`autostart`], [`launch`], [`platform`]: start-at-login, the path to
 //!   launch the app by, and host queries.
 
@@ -36,6 +37,7 @@ pub mod probe;
 pub mod rate;
 pub mod selector;
 pub mod usage;
+pub mod weather;
 
 pub use config::{ConfigFile, Settings};
 pub use engine::{AccountError, Engine, EngineStatus, HostClock, PollPlan, Write, WriteKind};

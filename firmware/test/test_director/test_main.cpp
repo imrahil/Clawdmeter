@@ -15,11 +15,13 @@ static char     broke_what[96];
 
 static void check_one_clawd(void) {
     const OnScreen s = fake_on_screen();
-    if (broke || fake_clawds(s) <= 1) return;
+    // A page covers the cards: only the corner Clawd may be up (pages.h).
+    const bool page_ok = !covered || (!s.big && !s.performer && !s.face);
+    if (broke || (fake_clawds(s) <= 1 && page_ok)) return;
     broke = true;
     broke_at = fake_now_ms;
-    snprintf(broke_what, sizeof(broke_what), "beat %s:%u corner %d big %d performer %d face %d",
-             director_beat_name(), step, s.corner, s.big, s.performer, s.face);
+    snprintf(broke_what, sizeof(broke_what), "beat %s:%u corner %d big %d performer %d face %d covered %d attn %d",
+             director_beat_name(), step, s.corner, s.big, s.performer, s.face, covered, attention_on);
 }
 
 // Which beats a run went through, so a fuzz pass can't be vacuous.
@@ -98,6 +100,7 @@ static uint32_t fz_range(uint32_t lo, uint32_t hi) { return lo + fz_next() % (hi
 // director_init() is for boot; between runs, also drop what a run left
 // pending (this file includes the director, so its statics are in reach).
 static void fresh_director(void) {
+    covered = false;
     attention_on = false;
     resume_screensaver = false;
     react_anim = NULL;
@@ -130,13 +133,16 @@ static void fuzz(uint32_t seed, uint32_t total_ms, bool has_big) {
         t += gap;
         UsageData d = live_payload();
         SignalsUpdate sig = no_signal();
-        switch (fz_next() % 16) {
+        switch (fz_next() % 17) {
         case 0: case 1:  world.activity = (int)fz_range(0, 3); break;
         case 2:          world.activity = 3; break;
         case 3: case 4:  sig.event_fired = true; sig.event = "psb"[fz_next() % 3]; sig.event_seq = ++es; break;
         case 5:          pct += 1; d.session_pct = pct; break;
         case 6:          sig.session_reset = true; pct = 0; d.session_pct = pct; break;
-        case 7:          director_alert("needs you"); continue;
+        case 7:          // main.cpp closes a page before an alert runs
+                         director_set_covered(false);
+                         director_alert("needs you");
+                         continue;
         case 8:          director_alert_clear(); continue;
         case 9: case 10: director_tap((int)fz_range(0, 479)); continue;
         case 11:         (void)director_button(true); continue;
@@ -147,6 +153,9 @@ static void fuzz(uint32_t seed, uint32_t total_ms, bool has_big) {
             continue;
         }
         case 14:         director_set_liveliness((int)fz_range(1, 5)); continue;
+        case 15:         // a page opens or closes (never over an alert)
+                         if (covered || !director_alerting()) director_set_covered(!covered);
+                         continue;
         default:         break;                   // a quiet stretch
         }
         d.session_pct = pct;
@@ -156,6 +165,7 @@ static void fuzz(uint32_t seed, uint32_t total_ms, bool has_big) {
     // Left alone afterwards, nothing hangs: whatever was running finishes
     // and he ends up home or in the screensaver.
     director_alert_clear();
+    director_set_covered(false);
     world.meters_live = true;
     world.activity = 0;
     run_for(3 * 60 * 1000);
@@ -206,6 +216,27 @@ static void test_no_nonsense_sits_still_through_everything_but_taps(void) {
     run_for(3000);
     TEST_ASSERT_EQUAL_STRING("peek", director_beat_name());
     director_set_liveliness(CLAWD_LIVELINESS_DEFAULT);
+}
+
+// A page over the meters: a running show ends at once, nothing starts while
+// it's up (he idles in his seat), and a tap is the page's; once it closes
+// the meters come back to life.
+static void test_page_holds_the_beats(void) {
+    fresh_director();
+    TEST_ASSERT_TRUE(director_debug("show"));
+    run_for(6000);
+    director_set_covered(true);
+    TEST_ASSERT_EQUAL_STRING("home", director_beat_name());
+    run_for(30 * 60 * 1000);                     // long and quiet: no screensaver, no show
+    assert_one_clawd();
+    TEST_ASSERT_EQUAL_STRING("home", director_beat_name());
+    director_tap(240);                           // the page's tap, not a peek
+    run_for(2000);
+    TEST_ASSERT_EQUAL_STRING("home", director_beat_name());
+    director_set_covered(false);
+    director_tap(240);                           // the aquarium again
+    run_for(2000);
+    TEST_ASSERT_EQUAL_STRING("peek", director_beat_name());
 }
 
 // Turning the slider down mid-show ends the show gracefully.
@@ -341,6 +372,7 @@ int main(int, char**) {
     RUN_TEST(test_fuzz_one_clawd_without_full_size_sprite);
     RUN_TEST(test_no_nonsense_sits_still_through_everything_but_taps);
     RUN_TEST(test_no_nonsense_ends_a_running_show);
+    RUN_TEST(test_page_holds_the_beats);
     RUN_TEST(test_fuzz_one_clawd_at_every_liveliness);
     RUN_TEST(test_boot_dismisses_alert_without_touch);
     RUN_TEST(test_boot_leaves_alert_alone_with_touch);

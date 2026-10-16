@@ -266,6 +266,10 @@ pub struct Settings {
     pub attention_anim: AttentionAnim,
     /// Pace marker on the device's usage bars (`pm`, default off).
     pub pace_marker: bool,
+    /// The device's Weather page: a place name (`weather_location`), looked
+    /// up with Open-Meteo's geocoder unless `weather_coords` pins it. `None`
+    /// = no Weather page.
+    pub weather: Option<crate::weather::WeatherPlace>,
 }
 
 /// `alert_on`: the alert kinds that show, as a comma list of `permission`,
@@ -394,6 +398,12 @@ impl Settings {
             liveliness: cfg.get("liveliness").map(parse_liveliness).unwrap_or(DEFAULT_LIVELINESS),
             attention_anim: cfg.get("attention_anim").map(AttentionAnim::parse).unwrap_or_default(),
             pace_marker: on_off(cfg.get("pace_marker"), false),
+            weather: cfg.get("weather_location").map(str::trim).filter(|s| !s.is_empty()).map(|name| {
+                crate::weather::WeatherPlace {
+                    name: name.to_owned(),
+                    coords: cfg.get("weather_coords").and_then(crate::weather::parse_coords),
+                }
+            }),
         }
     }
 
@@ -471,6 +481,21 @@ impl Settings {
             match &self.claude_path {
                 Some(p) => cfg.set("claude_path", &p.to_string_lossy()),
                 None => cfg.remove("claude_path"),
+            }
+        }
+        if current.weather != self.weather {
+            match &self.weather {
+                Some(w) => {
+                    cfg.set("weather_location", &w.name);
+                    match w.coords {
+                        Some(c) => cfg.set("weather_coords", &c.as_config()),
+                        None => cfg.remove("weather_coords"),
+                    }
+                }
+                None => {
+                    cfg.remove("weather_location");
+                    cfg.remove("weather_coords");
+                }
             }
         }
         if current.update_check != self.update_check {
@@ -653,6 +678,17 @@ mod tests {
         s.apply_to(&mut cfg, &paths());
         assert_eq!(cfg.get("attention_anim"), Some("off"));
         assert_eq!(Settings::from_config(&cfg, &paths(), None).attention_anim, AttentionAnim::Off);
+    }
+
+    #[test]
+    fn weather_place() {
+        assert!(settings("").weather.is_none(), "off by default");
+        assert!(settings("weather_location =   \n").weather.is_none());
+        let w = settings("weather_location = Warsaw  # home\n").weather.unwrap();
+        assert_eq!((w.name.as_str(), w.coords), ("Warsaw", None));
+        let w = settings("weather_location = Home\nweather_coords = 52.23, 21.01\n").weather.unwrap();
+        assert_eq!(w.coords.unwrap().degrees(), (52.23, 21.01));
+        assert!(settings("weather_location = X\nweather_coords = nope\n").weather.unwrap().coords.is_none());
     }
 
     #[test]

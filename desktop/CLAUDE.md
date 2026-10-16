@@ -31,7 +31,8 @@ is faked behind `FlashHardware`.
   `events.log`), `attention`, `payload`, `rate`, `engine` (I/O-free state
   machine: `next_write` / `mark_written`), `autostart` (systemd / XDG /
   LaunchAgent / Run key, legacy-daemon detection + `disable_legacy`),
-  `launch`, `platform`.
+  `launch`, `platform`, `weather` (Open-Meteo → the device's `{"k":"wx"}`
+  write; pure builders + `WeatherSchedule`, one blocking `fetch`).
 - `clawdmeter-ble`: btleplug link. Connects only to OS-known devices (custom
   service, or HID + exact name); address cache, REQ subscription,
   zombie-write breaker, BlueZ trust, macOS stale-bond unpair via `blueutil`,
@@ -67,7 +68,10 @@ is faked behind `FlashHardware`.
   `release_repo`, `update_check`, `onboarding_done`, `alert_on` (alert kinds
   the daemon lets through: the hook records `k` from `hook_event_name` /
   `notification_type` and `engine.on_attention` drops the rest; default all
-  but `idle`).
+  but `idle`), `weather_location` / `weather_coords` (the device's Weather
+  page; unset = off. `daemon.rs` fetches every 15 min off the loop, retries
+  after 2, writes it in a tick without an engine write, and re-sends the last
+  one after a reconnect).
 - Launch paths (`clawdmeter-core::launch`): hooks and Start at login write a
   stable path (`$APPIMAGE`, the Nix profile link, else `current_exe`). Under
   an AppImage, hooks run a copy extracted to `<state>/appimage/` (renewed when

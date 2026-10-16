@@ -62,6 +62,15 @@ void director_set_attn_anim(int seconds);
 // SIM_TRACE=1 for walkthrough timings). Beat changes always print.
 void director_set_trace(bool on);
 
+// A page (Weather, Focus: pages.h) covers the meters' cards. Turning it on
+// ends whatever was staged at once (the page change is the cut): the face
+// and the performer go, he's back in his seat, and he stays there, idling,
+// while it's on: no show, screensaver or peek, and taps belong to the page.
+// An alert never runs covered: main.cpp closes the page first.
+void director_set_covered(bool on);
+// An alert is up (pages stay closed until it ends).
+bool director_alerting(void);
+
 DirectorRoom director_room(void);
 const char*  director_beat_name(void);
 

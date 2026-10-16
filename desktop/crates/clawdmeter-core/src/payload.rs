@@ -543,8 +543,16 @@ mod tests {
         }
         assert!(fw.contains("s") && fw.contains("ok"), "parser keys found: {fw:?}");
         let ours: BTreeSet<String> = PAYLOAD_KEYS.iter().map(|s| s.to_string()).collect();
+        // The Weather page's write (`weather.rs`) is the other thing the app sends.
+        let weather: BTreeSet<String> = crate::weather::WEATHER_KEYS.iter().map(|s| s.to_string()).collect();
         for k in &fw {
-            assert!(ours.contains(k), "firmware reads {k:?}, which the payload never sends");
+            assert!(
+                ours.contains(k) || weather.contains(k),
+                "firmware reads {k:?}, which neither the payload nor the weather write sends"
+            );
+        }
+        for k in &weather {
+            assert!(fw.contains(k), "the weather write sends {k:?}, which the firmware doesn't read");
         }
         for k in &ours {
             assert!(
