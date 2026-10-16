@@ -299,6 +299,10 @@ void director_set_covered(bool on) {
 
 bool director_alerting(void) { return attention_on; }
 
+bool director_settled(void) {
+    return beat == B_HOME && !attention_on && !mascot_away() && !performer_visible();
+}
+
 bool director_button(bool main_button) {
     engage();
     if (main_button && attention_on && !board_caps().has_touch) {

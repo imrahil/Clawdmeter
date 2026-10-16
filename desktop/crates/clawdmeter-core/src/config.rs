@@ -270,6 +270,20 @@ pub struct Settings {
     /// up with Open-Meteo's geocoder unless `weather_coords` pins it. `None`
     /// = no Weather page.
     pub weather: Option<crate::weather::WeatherPlace>,
+    /// The device's Pace page, sent after each fresh poll (`pace_page`,
+    /// default on).
+    pub pace_page: bool,
+    /// The device's Activity page from Claude Code's transcripts
+    /// (`activity_page`, default on).
+    pub activity_page: bool,
+    /// Claude's service status on the device (`service_status`, default on).
+    pub service_status: bool,
+    /// The device's System page: this computer's stats, Linux only
+    /// (`system_stats`, default off).
+    pub system_stats: bool,
+    /// The device's Stocks page (`stocks = AMD, NVDA=NVIDIA`; up to 5).
+    /// Empty = no Stocks page.
+    pub stocks: Vec<crate::stocks::Stock>,
 }
 
 /// `alert_on`: the alert kinds that show, as a comma list of `permission`,
@@ -404,6 +418,11 @@ impl Settings {
                     coords: cfg.get("weather_coords").and_then(crate::weather::parse_coords),
                 }
             }),
+            pace_page: on_off(cfg.get("pace_page"), true),
+            activity_page: on_off(cfg.get("activity_page"), true),
+            service_status: on_off(cfg.get("service_status"), true),
+            system_stats: on_off(cfg.get("system_stats"), false),
+            stocks: cfg.get("stocks").map(crate::stocks::parse_spec).unwrap_or_default(),
         }
     }
 
@@ -463,6 +482,10 @@ impl Settings {
             ("alert_chime", "beep", self.alert_chime, current.alert_chime),
             ("desktop_chime", "", self.desktop_chime, current.desktop_chime),
             ("pace_marker", "", self.pace_marker, current.pace_marker),
+            ("pace_page", "", self.pace_page, current.pace_page),
+            ("activity_page", "", self.activity_page, current.activity_page),
+            ("service_status", "", self.service_status, current.service_status),
+            ("system_stats", "", self.system_stats, current.system_stats),
         ] {
             if now != was {
                 cfg.set(key, oo(now));
@@ -496,6 +519,13 @@ impl Settings {
                     cfg.remove("weather_location");
                     cfg.remove("weather_coords");
                 }
+            }
+        }
+        if current.stocks != self.stocks {
+            if self.stocks.is_empty() {
+                cfg.remove("stocks");
+            } else {
+                cfg.set("stocks", &crate::stocks::as_config(&self.stocks));
             }
         }
         if current.update_check != self.update_check {
@@ -689,6 +719,35 @@ mod tests {
         let w = settings("weather_location = Home\nweather_coords = 52.23, 21.01\n").weather.unwrap();
         assert_eq!(w.coords.unwrap().degrees(), (52.23, 21.01));
         assert!(settings("weather_location = X\nweather_coords = nope\n").weather.unwrap().coords.is_none());
+    }
+
+    #[test]
+    fn device_pages() {
+        let s = settings("");
+        assert!(s.pace_page && s.activity_page && s.service_status, "on by default");
+        assert!(!s.system_stats && s.stocks.is_empty(), "off by default");
+        let s = settings("pace_page = off\nactivity_page = OFF\nservice_status = off\nsystem_stats = on\n");
+        assert!(!s.pace_page && !s.activity_page && !s.service_status && s.system_stats);
+        let s = settings("stocks = amd, NVDA=NVIDIA  # watchlist\n");
+        assert_eq!(crate::stocks::as_config(&s.stocks), "AMD, NVDA=NVIDIA");
+
+        // Defaults stay out of the file; changes round-trip.
+        let mut cfg = ConfigFile::parse("");
+        let mut s = Settings::from_config(&cfg, &paths(), None);
+        s.apply_to(&mut cfg, &paths());
+        for k in ["pace_page", "activity_page", "service_status", "system_stats", "stocks"] {
+            assert!(cfg.get(k).is_none(), "{k} written at its default");
+        }
+        s.pace_page = false;
+        s.system_stats = true;
+        s.stocks = crate::stocks::parse_spec("R3NK.DE=Renk, ^GSPC");
+        s.apply_to(&mut cfg, &paths());
+        assert_eq!((cfg.get("pace_page"), cfg.get("system_stats")), (Some("off"), Some("on")));
+        assert_eq!(cfg.get("stocks"), Some("R3NK.DE=Renk, ^GSPC"));
+        assert_eq!(Settings::from_config(&cfg, &paths(), None), s);
+        s.stocks.clear();
+        s.apply_to(&mut cfg, &paths());
+        assert!(cfg.get("stocks").is_none());
     }
 
     #[test]

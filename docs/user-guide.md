@@ -162,32 +162,66 @@ If updates stop, the meters dim. The last reading is retained rather than
 replaced with zero. See [Clawd's director](clawd-director.md) for timing
 and character rules.
 
-### Pages: Weather and Focus
+### Pages
 
-| Weather | Focus |
-| --- | --- |
-| ![Weather](../screenshots/pages/weather.png) | ![Focus](../screenshots/pages/focus.png) |
-| Now, the next three days, rain in the next hour | A focus timer on the device |
+| Pace | Activity | Focus |
+| --- | --- | --- |
+| ![Pace](../screenshots/pages/pace.png) | ![Activity](../screenshots/pages/activity.png) | ![Focus](../screenshots/pages/focus.png) |
+| Where this 5-hour window is heading, and the week | Live Claude Code sessions and today's totals | A focus timer on the device |
+
+| System | Weather | Stocks |
+| --- | --- | --- |
+| ![System](../screenshots/pages/system.png) | ![Weather](../screenshots/pages/weather.png) | ![Stocks](../screenshots/pages/stocks.png) |
+| This computer's CPU, memory, temperature, disk | Now, the next three days, rain in the next hour | Up to five quotes with intraday lines |
 
 On boards with two side buttons, a short press on the secondary button
-turns to the next page and on BOOT to the previous one: meters → Weather →
-Focus → meters. The page takes the meters' place; Clawd stays in his seat.
-(Simulator captures.)
+turns to the next page and on BOOT to the previous one: meters → Pace →
+Activity → Focus → System → Weather → Stocks → meters. A page whose data
+hasn't arrived is skipped (Focus is always there). The page takes the
+meters' place; Clawd stays in his seat. (Simulator captures.)
 
+- **Pace** (on unless `pace_page = off`): the session's usage across its
+  5-hour window, the projection at the current pace ("Limit by 15:40" or
+  "64% at reset", green / amber / red), and the weekly usage added on each of
+  the last 7 days against an even share. The app keeps its own usage history
+  for it. When the limit would land before the reset, Clawd fidgets as if
+  usage were heavy.
+- **Activity** (on unless `activity_page = off`): tokens today, their
+  API-equivalent value and today's session count, then the live sessions:
+  red = needs you, breathing orange = working (with the tool), grey = idle.
+  Read from Claude Code's transcripts on this computer.
+- **Focus** needs nothing from the app: 25 minutes of focus, then a
+  5-minute break (15 minutes after every fourth). Tap to start or pause,
+  hold to reset or skip a break; holding again while it's ready starts the
+  cycle of four over. At the end of each one the device dings, wakes and
+  shows the page.
+- **System** (opt in: `system_stats = on`, Linux): CPU with the load
+  average, memory, CPU temperature and disk, titled with the host name; the
+  status line shows the uptime.
 - **Weather** appears once the app has a place to look up: set
   `weather_location` in the config (below). It shows the temperature and
   condition, feels-like and today's high and low, wind in km/h, the UV index
   and air quality, and three forecast tiles; the status line says when rain
   is coming in the next hour, otherwise the next sunrise or sunset. Data from
   [Open-Meteo](https://open-meteo.com), refreshed every 15 minutes.
-- **Focus** needs nothing from the app: 25 minutes of focus, then a
-  5-minute break (15 minutes after every fourth). Tap to start or pause,
-  hold to reset or skip a break; holding again while it's ready starts the
-  cycle of four over. At the end of each one the device dings, wakes and
-  shows the page.
+- **Stocks** (opt in: `stocks = AMD, NVDA=NVIDIA`): price, day change and
+  the day's line against the previous close (dashed), with a dot while the
+  market is open. Data from Yahoo Finance every 5 minutes.
 
-A page goes back to the meters after 2 minutes without a touch or a button
-(Focus not while it runs), and an alert always brings the meters back.
+**Carousel.** Tap a page (any but Focus, whose taps are its own) to turn the
+carousel on or off: it then steps to the next page every 30 seconds, the
+meters included (Focus only while it runs). It waits while an alert is up,
+the screen sleeps, or Clawd is in the middle of something on the meters. The
+device remembers the setting.
+
+Without the carousel a page goes back to the meters after 2 minutes without
+a touch or a button (Focus not while it runs). An alert always brings the
+meters back.
+
+**Claude's status.** While status.claude.com reports a problem
+(`service_status`, on by default), the meters' status line alternates every 6
+seconds between its usual word and the incident, marked amber (minor or
+maintenance) or red (major).
 
 ### Buttons
 
@@ -225,6 +259,11 @@ seconds and preserves comments and unknown keys when saving.
 | `alert_on` | `permission, question, elicitation` | Which waits alert on the device and tray: `permission`, `question`, `idle`, `elicitation` (MCP input), or `none`. Set on the Hooks page. Other notification types follow `permission`. |
 | `weather_location` | unset | A place name for the device's Weather page, looked up with Open-Meteo's geocoder (no account or key). Unset: no Weather page. |
 | `weather_coords` | unset | `lat, lon` to pin the place when the lookup picks the wrong one; `weather_location` is then shown as written. |
+| `stocks` | unset | Up to 5 symbols for the device's Stocks page, from Yahoo Finance (no account or key), each optionally with the name to show: `AMD, NVDA=NVIDIA, R3NK.DE=Renk`. Unset: no Stocks page. |
+| `pace_page` | `on` | `off` stops the Pace page's data: the session's usage across its 5-hour window, its projection at the current pace, and the weekly usage added each day. Built from the app's own usage history. |
+| `activity_page` | `on` | `off` stops the Activity page's data: live Claude Code sessions and today's tokens and API-equivalent cost, read from Claude Code's transcripts on this computer. |
+| `service_status` | `on` | `off` stops checking Claude's service status (status.claude.com) every 5 minutes. |
+| `system_stats` | `off` | `on` sends this computer's CPU, memory, temperature, disk and uptime every 30 seconds for the System page. Linux only. |
 | `release_repo` | `HermannBjorgvin/Clawdmeter` | GitHub repository used for firmware releases. |
 | `onboarding_done` | unset | `true` after setup is finished or skipped. |
 

@@ -31,8 +31,14 @@ is faked behind `FlashHardware`.
   `events.log`), `attention`, `payload`, `rate`, `engine` (I/O-free state
   machine: `next_write` / `mark_written`), `autostart` (systemd / XDG /
   LaunchAgent / Run key, legacy-daemon detection + `disable_legacy`),
-  `launch`, `platform`, `weather` (Open-Meteo → the device's `{"k":"wx"}`
-  write; pure builders + `WeatherSchedule`, one blocking `fetch`).
+  `launch`, `platform`, `feeds` (what the device pages share: `Schedule`,
+  `fold_ascii`, `WRITE_LIMIT`, HTTP) and one module per page, each pure
+  builders + a blocking fetch/collect: `weather` (Open-Meteo → `{"k":"wx"}`),
+  `pace` (`<state>/usage-history.jsonl` → `"h"`), `activity` (transcripts
+  under `<config dir>/projects/` + `<state>/activity-cache.json` → `"a"`;
+  update its `PRICES` when models change), `service_status`
+  (status.claude.com → `"ss"`), `system` (`/proc`, `/sys`, Linux only →
+  `"sys"`), `stocks` (Yahoo chart → `"q"` per symbol).
 - `clawdmeter-ble`: btleplug link. Connects only to OS-known devices (custom
   service, or HID + exact name); address cache, REQ subscription,
   zombie-write breaker, BlueZ trust, macOS stale-bond unpair via `blueutil`,
@@ -44,7 +50,8 @@ is faked behind `FlashHardware`.
   tick, config re-read every 5 s), `hooks/` (`clawdmeter hook
   alert|clear|event` and the settings.json installer), `ipc.rs`
   (single-instance lock, status file, command queues, window lock),
-  `onboarding.rs`, `boards.rs` (names, buy links, illustrations), `chime.rs`.
+  `onboarding.rs`, `boards.rs` (names, buy links, illustrations), `chime.rs`,
+  `feeds.rs` (the device pages' refreshes, queue and round-robin writes).
 
 ## Running
 
@@ -56,8 +63,9 @@ is faked behind `FlashHardware`.
   `CLAWDMETER_DECORATIONS`.
 - State lives in one dir, `~/.config/clawdmeter/` (Windows:
   `%LOCALAPPDATA%\Clawdmeter\`): `config`, `events.log`, `attention`,
-  `clear-<sid>`, `ble-address`, `daemon.log`, `usage-blocks.json`, app
-  state and locks.
+  `clear-<sid>`, `ble-address`, `daemon.log`, `usage-blocks.json`,
+  `usage-history.jsonl` (Pace), `activity-cache.json` (Activity), app state
+  and locks.
 - Config keys: `config_dirs`, `poll_interval`, `heartbeat_interval`,
   `reset_chime` and `alert_chime` (device chimes; the old `chime` / `beep`
   keys are read when these are absent), `desktop_chime` (the same ding on
@@ -69,9 +77,14 @@ is faked behind `FlashHardware`.
   the daemon lets through: the hook records `k` from `hook_event_name` /
   `notification_type` and `engine.on_attention` drops the rest; default all
   but `idle`), `weather_location` / `weather_coords` (the device's Weather
-  page; unset = off. `daemon.rs` fetches every 15 min off the loop, retries
-  after 2, writes it in a tick without an engine write, and re-sends the last
-  one after a reconnect).
+  page; unset = off), `pace_page`, `activity_page`, `service_status` (default
+  on), `system_stats` (default off, Linux only), `stocks` (`AMD,
+  NVDA=NVIDIA`, up to 5; empty = off). Each page is a tagged write
+  (`feeds.rs`): refreshed off the loop while connected (weather 15 min;
+  status and stocks 5 min; activity and system 30 s; failures retry after
+  2 min; pace after each fresh `pro` poll write; activity also when the alert
+  changes), one queued write per tick without an engine write, round-robin,
+  and each feed's last writes re-sent after a reconnect.
 - Launch paths (`clawdmeter-core::launch`): hooks and Start at login write a
   stable path (`$APPIMAGE`, the Nix profile link, else `current_exe`). Under
   an AppImage, hooks run a copy extracted to `<state>/appimage/` (renewed when

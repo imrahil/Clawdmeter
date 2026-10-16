@@ -85,20 +85,28 @@ portable archives, and Nix setup.
 
 ![Clawdmeter desktop app showing device status and usage](desktop/docs/screenshots/overview.png)
 
-## Weather and Focus pages
+## Pages
 
-Two extra pages on boards with two side buttons: **Weather** (set
-`weather_location = <place>` in the config; data from Open-Meteo) and
-**Focus**, a Pomodoro timer on the device. A short press on the side buttons
-turns the page; holding them still sends Space and Shift+Tab. See the
-[user guide](docs/user-guide.md#pages-weather-and-focus).
+Six extra pages on boards with two side buttons: **Pace** (where this 5-hour
+window is heading), **Activity** (live Claude Code sessions, today's tokens),
+**Focus** (a Pomodoro timer on the device), **System** (this computer's
+stats, opt in), **Weather** (set `weather_location`) and **Stocks** (opt in).
+A short press on the side buttons turns the page; holding them still sends
+Space and Shift+Tab. Tap a page to start a 30-second carousel. While
+status.claude.com reports a problem, the meters' status line says so. See the
+[user guide](docs/user-guide.md#pages).
 
-| Weather | Focus |
-| --- | --- |
-| ![Weather page (simulator)](screenshots/pages/weather.png) | ![Focus page (simulator)](screenshots/pages/focus.png) |
+| Pace | Activity | Focus |
+| --- | --- | --- |
+| ![Pace page (simulator)](screenshots/pages/pace.png) | ![Activity page (simulator)](screenshots/pages/activity.png) | ![Focus page (simulator)](screenshots/pages/focus.png) |
+
+| System | Weather | Stocks |
+| --- | --- | --- |
+| ![System page (simulator)](screenshots/pages/system.png) | ![Weather page (simulator)](screenshots/pages/weather.png) | ![Stocks page (simulator)](screenshots/pages/stocks.png) |
 
 Weather data by [Open-Meteo.com](https://open-meteo.com) (CC BY 4.0); weather
-icons from [Lucide](https://lucide.dev) (ISC).
+icons from [Lucide](https://lucide.dev) (ISC). Quotes from Yahoo Finance's
+public chart endpoint (unofficial).
 
 ## Docs
 

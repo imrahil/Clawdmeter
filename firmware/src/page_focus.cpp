@@ -114,6 +114,9 @@ static void tick(uint32_t now) { apply(now); }
 static void tap(void) { focus_toggle(millis()); apply(millis()); }
 static void long_press(void) { focus_reset(); apply(millis()); }
 
+// In the carousel only while a session or a break runs.
+static bool in_carousel(uint32_t now) { (void)now; return focus_running(); }
+
 const PageDef page_focus = {
-    "focus", build, destroy, available, keep_open, tick, tap, long_press,
+    "focus", build, destroy, available, keep_open, tick, tap, long_press, in_carousel,
 };

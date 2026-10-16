@@ -54,7 +54,8 @@ invalidates only the cells that changed.
 
 ![A show on the meters (simulator)](../screenshots/director/06-show-scene.png)
 
-**Under a page.** The Weather and Focus pages (`firmware/src/pages.h`) take
+**Under a page.** The pages (Pace, Activity, Focus, System, Weather, Stocks:
+`firmware/src/pages.h`) take
 the meters' cards, title and status line; the corner Clawd's seat stays.
 `director_set_covered(true)` ends whatever was staged at once (the page
 change is the cut: face hidden, performer off stage, Clawd seated) and holds
@@ -63,6 +64,18 @@ and a tap is the page's. The QA beats refuse to start. An alert never runs
 covered: `main.cpp` closes the page first. `test/test_director` fuzzes page
 changes along with everything else and fails if anything but the seated
 corner Clawd is up while covered.
+
+**Carousel.** With the carousel on (a tap on a page toggles it), the pages
+step every 30 s, the meters included. It only leaves the meters when
+`director_settled()`: he's home in his seat, not on a lurk trip, with no
+show, face or alert up. So a page never cuts a beat short; it waits for the
+next quiet moment.
+
+**Pace.** The Pace page's write carries a zone; zone 2 (at this rate the
+limit lands before the reset) lifts the mood group to Heavy like hook
+activity does (`usage_rate_set_pace`, 20-minute TTL), so his corner acts and
+the show's pick follow it. Nothing else changes: the fresh-window joy
+already celebrates a reset.
 
 Continuity rules, as the code enforces them:
 

@@ -15,12 +15,17 @@
 //! * [`payload`]: the JSON the firmware parses.
 //! * [`rate`]: the slow-clock mood.
 //! * [`engine`]: all of the above as one I/O-free state machine.
-//! * [`weather`]: the device's Weather page (Open-Meteo), its own write.
+//! * [`feeds`]: what the device's extra pages share (refresh [`feeds::Schedule`],
+//!   ASCII fold, HTTP), and each page's own write: [`weather`] (Open-Meteo),
+//!   [`pace`] (usage history), [`activity`] (Claude Code transcripts),
+//!   [`service_status`] (status.claude.com), [`system`] (host stats, Linux)
+//!   and [`stocks`] (Yahoo Finance).
 //! * [`autostart`], [`launch`], [`platform`]: start-at-login, the path to
 //!   launch the app by, and host queries.
 
 #![warn(missing_docs)]
 
+pub mod activity;
 pub mod attention;
 pub mod autostart;
 pub mod backoff;
@@ -28,14 +33,19 @@ pub mod cadence;
 pub mod config;
 pub mod engine;
 pub mod events;
+pub mod feeds;
 pub mod launch;
 pub mod oauth;
+pub mod pace;
 pub mod paths;
 pub mod payload;
 pub mod platform;
 pub mod probe;
 pub mod rate;
 pub mod selector;
+pub mod service_status;
+pub mod stocks;
+pub mod system;
 pub mod usage;
 pub mod weather;
 

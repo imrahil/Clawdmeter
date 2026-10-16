@@ -2,6 +2,13 @@
 # Extra keys: "name" (window title), "hold_ms" (time on this state, default 3000).
 # Keys: space play/pause · arrows step · 1-9 jump · see boards/sim/board.h.
 {"name":"weather","hold_ms":200,"k":"wx","loc":"Warsaw","t":12.8,"fl":11,"c":2,"d":1,"hi":15,"lo":7,"f":[["Tue",80,16,8],["Wed",61,19,13],["Thu",3,18,12]],"sun":"Sunset 18:45","ws":14,"uv":3,"aq":22,"rn":"Rain in 30 min"}
+{"name":"pace","hold_ms":200,"k":"h","sh":[0,2,4,6,8,11,14,17,20,23,27],"fr":36,"pr":91,"pz":1,"wd":[["Fri",8],["Sat",-1],["Sun",3],["Mon",16],["Tue",22],["Wed",11],["Thu",7]],"wp":78}
+{"name":"activity","hold_ms":200,"k":"a","ss":[["clawdmeter",2,"needs you",0],["api-server",1,"Bash",0],["website",1,"Thinking",0],["dotfiles",0,"",12]],"nl":4,"tk":48213004,"co":3127,"ns":9}
+{"name":"system","hold_ms":200,"k":"sys","hn":"workstation","cpu":37,"ld":"2.41","nc":16,"mem":62,"mu":"19.8/32 GB","tmp":58,"dsk":71,"du":"655/920 GB","up":"3d 4h"}
+{"name":"stock 1","hold_ms":200,"k":"q","i":0,"n":3,"sy":"AMD","nm":"Advanced Micro Devices","cu":"USD","p":168.42,"pc":164.1,"o":1,"h":[20,24,22,31,35,33,41,46,44,52,57,55,61,66,70],"b":30,"fr":55}
+{"name":"stock 2","hold_ms":200,"k":"q","i":1,"n":3,"sy":"NVDA","nm":"NVIDIA","cu":"USD","p":181.07,"pc":184.9,"o":1,"h":[80,77,79,71,66,68,60,62,55,51,48,50,44,40,38],"b":75,"fr":55}
+{"name":"stock 3","hold_ms":200,"k":"q","i":2,"n":3,"sy":"R3NK","nm":"Renk","cu":"EUR","p":61.3,"pc":60.85,"o":0,"h":[40,42,45,41,39,44,48,50,47,52,55,53,58,60,57,59,62,61,64,63,66,65,67,68,66,69,70,68,71,72,70,73],"b":38,"fr":100}
+{"name":"service status","hold_ms":200,"k":"ss","i":"minor","m":"Elevated errors on Claude Opus"}
 {"name":"fresh session","hold_ms":3000,"s":3.0,"sr":295,"w":12.0,"wr":9000,"st":"allowed","ok":true,"t":1785474000,"tf":24}
 {"name":"steady use","hold_ms":3000,"s":42.0,"sr":180,"w":33.0,"wr":7900,"st":"allowed","ok":true}
 {"name":"warning zone","hold_ms":3000,"s":78.0,"sr":75,"w":55.0,"wr":6400,"st":"allowed","ok":true}

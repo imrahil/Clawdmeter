@@ -15,6 +15,7 @@ pub mod chime;
 pub mod daemon;
 pub mod diff;
 pub mod errors;
+pub mod feeds;
 pub mod hooks;
 pub mod ipc;
 pub mod logger;

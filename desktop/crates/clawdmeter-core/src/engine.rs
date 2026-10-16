@@ -265,6 +265,12 @@ impl Engine {
         self.attention.dismissed();
     }
 
+    /// The session the alert on screen belongs to (the Activity page marks
+    /// it "needs you"); `None` with no alert or an alert with no session.
+    pub fn attention_session(&self) -> Option<&str> {
+        self.attention.alert.as_ref().map(|a| a.session.as_str()).filter(|s| !s.is_empty())
+    }
+
     /// The device (REQ notify) or the user asked for fresh numbers. Accounts
     /// that are backing off, or were polled in the last 2 minutes, still
     /// wait for that to pass.
@@ -809,11 +815,14 @@ mod tests {
         let alert = |s: &str| Alert { message: "m".into(), session: s.into(), kind: AlertKind::Permission, at };
 
         // A session killed before its clear: expires with an x=1.
+        assert_eq!(e.attention_session(), None);
         e.on_attention(Some(alert("gone")), &HashMap::new());
+        assert_eq!(e.attention_session(), Some("gone"));
         write(&mut e, T0 + 2).unwrap();
         assert!(!e.expire_attention(at + Duration::from_secs(60)));
         assert!(e.expire_attention(at + crate::attention::ALERT_TTL));
         assert!(!e.status(T0).attention);
+        assert_eq!(e.attention_session(), None);
         assert_eq!(write(&mut e, T0 + 3).unwrap().payload.x, Some(1));
 
         // Tapped away on the device: gone here too, nothing sent back.

@@ -33,6 +33,7 @@
 #include "pages.h"
 #include "focus.h"
 #include "weather.h"
+#include "feeds.h"
 
 static UsageData usage = {};
 
@@ -228,15 +229,18 @@ static void check_serial_cmd() {
                 Serial.printf("{\"pace_marker\":%s}\n", pace_marker_get() ? "true" : "false");
             }
             else if (strncmp(cmd_buf, "page ", 5) == 0) {
-                // QA: `page next|prev|meters|weather|focus` (the side buttons' job).
+                // QA: `page next|prev|<name>` (the side buttons' job); names
+                // in pages.h (meters pace activity focus system weather stocks).
                 const char* p = cmd_buf + 5;
-                if      (strcmp(p, "next") == 0)    pages_next();
-                else if (strcmp(p, "prev") == 0)    pages_prev();
-                else if (strcmp(p, "meters") == 0)  pages_show(PAGE_METERS);
-                else if (strcmp(p, "weather") == 0) pages_show(PAGE_WEATHER);
-                else if (strcmp(p, "focus") == 0)   pages_show(PAGE_FOCUS);
-                static const char* const NAMES[] = { "meters", "weather", "focus" };
-                Serial.printf("{\"page\":\"%s\"}\n", NAMES[pages_current()]);
+                if      (strcmp(p, "next") == 0) pages_next();
+                else if (strcmp(p, "prev") == 0) pages_prev();
+                else if (pages_by_name(p) != PAGE_COUNT) pages_show(pages_by_name(p));
+                Serial.printf("{\"page\":\"%s\"}\n", pages_name(pages_current()));
+            }
+            else if (strcmp(cmd_buf, "carousel") == 0 || strncmp(cmd_buf, "carousel ", 9) == 0) {
+                // QA: `carousel [0|1]` (a tap on a page toggles it too).
+                if (cmd_buf[8] == ' ') pages_set_carousel(atoi(cmd_buf + 9) != 0);
+                Serial.printf("{\"carousel\":%s}\n", pages_carousel() ? "true" : "false");
             }
             else if (strncmp(cmd_buf, "clawd ", 6) == 0) {
                 const bool ok = director_debug(cmd_buf + 6);
@@ -301,7 +305,7 @@ void setup() {
     ui_update_ble_status(ble_get_state(), ble_get_device_name(), ble_get_mac_address());
     ui_update_battery(power_hal_battery_pct(), power_hal_is_charging(), power_hal_is_vbus_in());
     director_init();    // rooms + beats; boots on the meters (home)
-    pages_init();       // Weather / Focus pages over the meters (side buttons)
+    pages_init();       // Pace … Stocks pages over the meters (side buttons, carousel)
     clawd_prefs_init();  // the saved device settings, before the app says otherwise
 
     Serial.printf("Dashboard ready (%s, %dx%d) %lu ms after boot, waiting for data on BLE...\n",
@@ -511,15 +515,31 @@ void loop() {
     if (ble_has_data()) {
         const char* json = ble_get_data();   // takes the write: read it once
         static WeatherData wx;
+        // The pages' writes (tagged "k"): never a usage update (no
+        // freshness, no rate sample). One static each: they're big.
+        static PaceData pace;
+        static ActivityData act;
+        static SystemData sys;
+        static StockQuote quote;
+        static ServiceStatus svc;
+        bool ok = true;
+        const FeedKind kind = feed_kind(json);
         if (weather_is_payload(json)) {
-            // The Weather page's write: never a usage update (no freshness,
-            // no rate sample).
-            if (weather_parse(json, &wx)) {
-                pages_update_weather(&wx);
-                ble_send_ack();
-            } else {
-                ble_send_nack();
-            }
+            if ((ok = weather_parse(json, &wx))) pages_update_weather(&wx);
+        } else if (kind == FEED_PACE) {
+            if ((ok = feed_parse_pace(json, &pace))) pages_update_pace(&pace);
+        } else if (kind == FEED_ACTIVITY) {
+            if ((ok = feed_parse_activity(json, &act))) pages_update_activity(&act);
+        } else if (kind == FEED_SYSTEM) {
+            if ((ok = feed_parse_system(json, &sys))) pages_update_system(&sys);
+        } else if (kind == FEED_STOCK) {
+            if ((ok = feed_parse_stock(json, &quote))) pages_update_stock(&quote);
+        } else if (kind == FEED_STATUS) {
+            if ((ok = feed_parse_status(json, &svc))) ui_set_service_status(svc.level, svc.msg);
+        }
+        if (weather_is_payload(json) || kind != FEED_NONE) {
+            if (ok) ble_send_ack();
+            else    ble_send_nack();
         } else if (parse_json(json, &usage)) {
             // Fast + slow clock bookkeeping: rate sample (replays skipped),
             // hook activity lift, event dedupe. See signals.h.
@@ -546,6 +566,7 @@ void loop() {
             }
             if (usage.pace_marker >= 0) pace_marker_set(usage.pace_marker != 0);
             ui_update(&usage);
+            pages_update_usage(&usage);
             // A prompt (or you're back after a gap): you're at the computer,
             // so a dimmed or dark panel wakes before Clawd notices you. A
             // Stop or tool activity doesn't: Claude working alone isn't you.

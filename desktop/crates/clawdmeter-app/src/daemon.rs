@@ -18,10 +18,11 @@ use clawdmeter_core::engine::PollPlan;
 use clawdmeter_core::events::EventTail;
 use clawdmeter_core::probe;
 use clawdmeter_core::usage;
-use clawdmeter_core::weather::{self, WeatherPayload, WeatherSchedule};
 use clawdmeter_core::{unix_now, Engine, EngineStatus, HostClock, Paths, Settings, WriteKind};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
+
+use crate::feeds::Feeds;
 
 /// Loop tick: events reach the device within about this long.
 const TICK: Duration = Duration::from_millis(500);
@@ -115,7 +116,6 @@ pub fn spawn(paths: Paths) -> DaemonHandle {
 }
 
 type PollResults = Vec<(PathBuf, probe::Polled)>;
-type WeatherResult = Result<WeatherPayload, String>;
 type ConnectResult = Result<(DeviceLink, DeviceEvents), LinkError>;
 
 /// Read each account of a poll plan: the probe, `/usage`, or a reading known
@@ -177,11 +177,8 @@ pub async fn run(paths: Paths, mut commands: mpsc::UnboundedReceiver<Command>, s
     let mut last_link_check = unix_now();
     let mut last_write_at = None;
     let mut chimes_muted = false;
-    // The Weather page (weather.rs): its own write, never a usage update.
-    let mut wx = WeatherSchedule::default();
-    let mut wx_place = engine.settings().weather.clone();
-    let mut wx_fetch: Option<JoinHandle<WeatherResult>> = None;
-    let mut wx_unsent = false;
+    // The device's extra pages (feeds.rs): their own writes, never a usage update.
+    let mut feeds = Feeds::new(paths.clone(), engine.settings(), host.prefers_12h);
     let mut ticker = tokio::time::interval(TICK);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -241,6 +238,7 @@ pub async fn run(paths: Paths, mut commands: mpsc::UnboundedReceiver<Command>, s
                 }
                 engine.update_settings(s);
                 engine.set_claude_found(claude.is_some());
+                feeds.update_settings(engine.settings());
             }
         }
 
@@ -262,35 +260,9 @@ pub async fn run(paths: Paths, mut commands: mpsc::UnboundedReceiver<Command>, s
             log::info!("attention alert expired");
         }
 
-        // ---- weather ----
-        if engine.settings().weather != wx_place {
-            wx_place = engine.settings().weather.clone();
-            wx.reset();
-            wx_unsent = false;
-        }
-        if wx_fetch.as_ref().is_some_and(JoinHandle::is_finished) {
-            match wx_fetch.take().expect("checked").await {
-                Ok(Ok(p)) => {
-                    wx.succeeded(now, p.encode());
-                    wx_unsent = true;
-                }
-                Ok(Err(e)) => {
-                    log::warn!("weather: {e}");
-                    wx.failed(now);
-                }
-                Err(e) => {
-                    log::error!("weather task failed: {e}");
-                    wx.failed(now);
-                }
-            }
-        }
-        if let Some(place) = &wx_place {
-            if wx_fetch.is_none() && wx.due(now) {
-                wx.started(now);
-                let place = place.clone();
-                wx_fetch = Some(tokio::task::spawn_blocking(move || weather::fetch(&place)));
-            }
-        }
+        // ---- device pages ----
+        feeds.set_alert_session(engine.attention_session(), now);
+        feeds.tick(now, link.is_some()).await;
 
         // ---- slow clock ----
         if let Some(rx) = device_events.as_mut() {
@@ -347,7 +319,7 @@ pub async fn run(paths: Paths, mut commands: mpsc::UnboundedReceiver<Command>, s
                     reconnect.connected();
                     inbox.reset();
                     engine.on_connected();
-                    wx_unsent = wx.last.is_some(); // a rebooted device starts without it
+                    feeds.requeue(); // a rebooted device starts without them
                 }
                 Ok(Err(e)) => {
                     link_state = match &e {
@@ -421,6 +393,9 @@ pub async fn run(paths: Paths, mut commands: mpsc::UnboundedReceiver<Command>, s
                     Ok(()) => {
                         engine.mark_written(now, &w);
                         last_write_at = Some(now);
+                        if w.kind == WriteKind::Poll {
+                            feeds.usage_written(&w.payload, now);
+                        }
                     }
                     Err(e) => {
                         log::warn!("write failed: {e}");
@@ -435,12 +410,13 @@ pub async fn run(paths: Paths, mut commands: mpsc::UnboundedReceiver<Command>, s
             }
         }
 
-        if let (Some(l), false, true) = (&link, wrote, wx_unsent) {
-            if let Some(bytes) = wx.last.clone() {
-                log::info!("Weather: {}", String::from_utf8_lossy(&bytes));
+        // A page's write goes in a tick the engine left free.
+        if let (Some(l), false) = (&link, wrote) {
+            if let Some((i, name, bytes)) = feeds.next_write() {
+                log::info!("{name}: {}", String::from_utf8_lossy(&bytes));
                 match l.write(&bytes).await {
-                    Ok(()) => wx_unsent = false,
-                    Err(e) => log::warn!("weather write failed: {e}"),
+                    Ok(()) => feeds.sent(i),
+                    Err(e) => log::warn!("{} write failed: {e}", name.to_lowercase()),
                 }
             }
         }

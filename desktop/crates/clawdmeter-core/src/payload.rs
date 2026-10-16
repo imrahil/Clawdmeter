@@ -517,9 +517,9 @@ mod tests {
         assert!(positions.windows(2).all(|w| w[0] < w[1]), "keys serialize in PAYLOAD_KEYS order");
     }
 
-    /// Every key the firmware's JSON parser reads is one we can send, and
-    /// every key we send is either read by the firmware or one of the additive
-    /// fast-clock keys. Scans every shared `firmware/src/*.cpp` (the parser
+    /// Every key the firmware's JSON parser reads is one we can send (in the
+    /// usage payload or a page's tagged write), and every key we send is
+    /// either read by the firmware or one of the additive fast-clock keys. Scans every shared `firmware/src/*.cpp` (the parser
     /// lives in `payload.cpp`; older trees had it in `main.cpp`).
     #[test]
     fn keys_match_firmware_parser() {
@@ -543,16 +543,25 @@ mod tests {
         }
         assert!(fw.contains("s") && fw.contains("ok"), "parser keys found: {fw:?}");
         let ours: BTreeSet<String> = PAYLOAD_KEYS.iter().map(|s| s.to_string()).collect();
-        // The Weather page's write (`weather.rs`) is the other thing the app sends.
-        let weather: BTreeSet<String> = crate::weather::WEATHER_KEYS.iter().map(|s| s.to_string()).collect();
+        // The device pages' tagged writes (`k`) are the other things the app sends.
+        let pages: [(&str, &[&str]); 6] = [
+            ("weather", crate::weather::WEATHER_KEYS),
+            ("pace", crate::pace::PACE_KEYS),
+            ("activity", crate::activity::ACTIVITY_KEYS),
+            ("status", crate::service_status::STATUS_KEYS),
+            ("system", crate::system::SYSTEM_KEYS),
+            ("stock", crate::stocks::STOCK_KEYS),
+        ];
         for k in &fw {
             assert!(
-                ours.contains(k) || weather.contains(k),
-                "firmware reads {k:?}, which neither the payload nor the weather write sends"
+                ours.contains(k) || pages.iter().any(|(_, keys)| keys.contains(&k.as_str())),
+                "firmware reads {k:?}, which neither the payload nor a page write sends"
             );
         }
-        for k in &weather {
-            assert!(fw.contains(k), "the weather write sends {k:?}, which the firmware doesn't read");
+        for (page, keys) in pages {
+            for k in keys {
+                assert!(fw.contains(*k), "the {page} write sends {k:?}, which the firmware doesn't read");
+            }
         }
         for k in &ours {
             assert!(

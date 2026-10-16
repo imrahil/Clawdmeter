@@ -21,6 +21,9 @@
 //   * Hook activity (`a`, 0-3) lifts the group: group = max(rate group,
 //     activity). It never lowers it. A level expires USAGE_RATE_ACTIVITY_TTL_MS
 //     after it was last set, so a dropped link can't pin Clawd at Heavy.
+//   * Pace (the Pace page's `{"k":"h"}` write, zone 2: at this rate the limit
+//     lands before the reset) lifts the group to Heavy the same way, until
+//     USAGE_RATE_PACE_TTL_MS after the last pace write or a calmer one.
 //   * Session reset = a real sample more than 5 points below the previous real
 //     sample. The ring restarts from that sample.
 //
@@ -30,6 +33,8 @@
 
 #define USAGE_RATE_WINDOW_MS        (15UL * 60UL * 1000UL)
 #define USAGE_RATE_ACTIVITY_TTL_MS  (3UL * 60UL * 1000UL)
+// The app writes pace after every fresh poll (at most 15 min apart).
+#define USAGE_RATE_PACE_TTL_MS      (20UL * 60UL * 1000UL)
 
 enum UsageRateGroup {
     RATE_IDLE   = 0,
@@ -58,9 +63,16 @@ void  usage_rate_set_activity_at(uint32_t now_ms, int level);
 // Current activity level, or -1 when none was set or it expired.
 int   usage_rate_activity_at(uint32_t now_ms);
 
-// Mood group: max(base group, live activity level). 0..3, see UsageRateGroup.
+// Pace zone from the app (0 comfortable, 1 tight, 2 limit before reset).
+// Zone 2 lifts the group to Heavy until the TTL or a lower zone.
+void  usage_rate_set_pace_at(uint32_t now_ms, int zone);
+bool  usage_rate_pace_hot_at(uint32_t now_ms);
+
+// Mood group: max(base group, live activity level, pace lift). 0..3, see
+// UsageRateGroup.
 int   usage_rate_group_at(uint32_t now_ms);
 
 // ---- millis() wrappers (usage_rate_clock.cpp) ----
 int   usage_rate_group(void);
 int   usage_rate_base_group(void);    // rate only, no activity lift
+void  usage_rate_set_pace(int zone);

@@ -16,3 +16,8 @@ log.workspace = true
 unicode-normalization.workspace = true
 ureq.workspace = true
 sha2.workspace = true
+
+# statvfs for the System page's disk usage. Already in the tree (tokio,
+# gpui, ...).
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"

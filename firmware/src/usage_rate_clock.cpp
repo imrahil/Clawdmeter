@@ -6,6 +6,7 @@
 
 int usage_rate_group(void) { return usage_rate_group_at(millis()); }
 int usage_rate_base_group(void) { return usage_rate_base_group_at(millis()); }
+void usage_rate_set_pace(int zone) { usage_rate_set_pace_at(millis(), zone); }
 
 SignalsUpdate signals_ingest(const UsageData* d) { return signals_ingest_at(d, millis()); }
 int      signals_activity(void)        { return signals_activity_at(millis()); }

@@ -493,6 +493,52 @@ void ui_set_meters_hidden(bool hidden) {
 static bool alert_active = false;
 static const char* still_shown = nullptr;   // minimal mode: status word on screen
 
+// ---- Claude's service status (the app's {"k":"ss"}) on the status line:
+// while status.claude.com reports trouble, the line alternates every
+// SVC_SWAP_MS between the whimsical verb and "✻ <incident>" with the glyph
+// amber (minor, maintenance) or red (major). Minimal mode shows it steadily.
+#define SVC_SWAP_MS  6000UL
+#define SVC_STALE_MS (20UL * 60 * 1000)   // the app sends every 5 min
+static int      svc_level = 0;
+static char     svc_msg[50];
+static uint32_t svc_ms = 0;
+static bool     svc_shown = false;          // the status line holds the incident now
+
+// One line, cut or scrolled: the same shape the alert uses.
+static void status_line_fixed(bool scroll) {
+    lv_label_set_long_mode(lbl_anim, scroll ? LV_LABEL_LONG_SCROLL_CIRCULAR : LV_LABEL_LONG_DOT);
+    lv_obj_set_size(lbl_anim, L.status_w, lv_font_get_line_height(L.status_font));
+}
+
+static void status_line_restore(void) {
+    lv_label_set_recolor(lbl_anim, false);
+    lv_label_set_long_mode(lbl_anim, LV_LABEL_LONG_WRAP);
+    lv_obj_set_size(lbl_anim, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    anim_last_ms = 0;          // whimsical line redraws on the next tick
+    still_shown = nullptr;
+    frozen_shown = nullptr;
+}
+
+static void show_incident(bool still) {
+    char buf[96];
+    snprintf(buf, sizeof(buf), "%s %s# %s", svc_level >= 2 ? "#eb5a4c" : "#e8b04b",
+             spinner_frames[1], svc_msg);
+    lv_label_set_recolor(lbl_anim, true);
+    status_line_fixed(!still);
+    lv_label_set_text(lbl_anim, buf);
+    svc_shown = true;
+}
+
+void ui_set_service_status(int level, const char* msg) {
+    svc_level = level;
+    snprintf(svc_msg, sizeof(svc_msg), "%s", msg ? msg : "");
+    svc_ms = lv_tick_get();
+    if (svc_shown && !alert_active) {     // redraw (or drop) it on the next tick
+        svc_shown = false;
+        status_line_restore();
+    }
+}
+
 // ======== Public API ========
 
 void ui_init(void) {
@@ -753,6 +799,17 @@ void ui_tick_anim(void) {
 
     if (alert_active) return;          // the status line holds the alert message
 
+    const bool svc_live = svc_level > 0 && svc_msg[0] && now - svc_ms < SVC_STALE_MS
+                       && s_ble_connected && view_state == 2;
+    if (svc_live && (still || ((now / SVC_SWAP_MS) & 1))) {
+        if (!svc_shown) show_incident(still);
+        return;
+    }
+    if (svc_shown) {
+        svc_shown = false;
+        status_line_restore();
+    }
+
     if (still) {
         // One glyph, one word per state; redrawn only when it changes.
         const char* text = !s_ble_connected ? "Waiting"
@@ -850,19 +907,15 @@ void ui_update_battery(int percent, bool charging, bool usb_power) {
 void ui_set_alert_text(const char* message) {
     if (message && message[0]) {
         alert_active = true;
+        svc_shown = false;
+        lv_label_set_recolor(lbl_anim, false);
         // Minimal mode: nothing moves, so a long message is cut, not scrolled.
-        lv_label_set_long_mode(lbl_anim, minimal_mode() ? LV_LABEL_LONG_DOT
-                                                        : LV_LABEL_LONG_SCROLL_CIRCULAR);
         // One line: without a fixed height LONG_DOT would wrap onto the cards.
-        lv_obj_set_size(lbl_anim, L.status_w, lv_font_get_line_height(L.status_font));
+        status_line_fixed(!minimal_mode());
         lv_label_set_text(lbl_anim, message);
         return;
     }
     if (!alert_active) return;
     alert_active = false;
-    lv_label_set_long_mode(lbl_anim, LV_LABEL_LONG_WRAP);
-    lv_obj_set_size(lbl_anim, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    anim_last_ms = 0;          // whimsical line redraws on the next tick
-    still_shown = nullptr;
-    frozen_shown = nullptr;
+    status_line_restore();
 }

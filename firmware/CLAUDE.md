@@ -38,19 +38,27 @@ pins and hardware gotchas, which loads when you work in that folder.
   fits, then shape rules (narrow, tall, short, round). Strings it sizes for
   are in `ui_text.h`. Never branch on a board or exact size; add a shape rule
   and a `test_layout` panel (`docs/porting/adding-a-board.md`).
-- **Pages** (`pages.{h,cpp}`, `page_weather.cpp`, `page_focus.cpp`): full
-  views in the meters' place, reached with the side buttons on two-button
-  boards (short press BOOT back / KEY forward; held past 400 ms the button
-  sends its HID key instead: `nav_button_tick()` in `main.cpp`). Order:
-  meters → Weather (once the app has sent `{"k":"wx"}`, `weather.cpp`) →
-  Focus (`focus.cpp`, a device-local Pomodoro) → meters. A page is built
-  into `ui_page_layer()` (above the meters, below the corner Clawd and the
-  battery) when it opens and deleted when it closes, and lays out inside the
-  meters' card area (`page_area()`), so it fits every panel shape. While one
-  is up the director is covered (`director_set_covered`): Clawd sits still
-  in his seat, nothing else stages, taps belong to the page. An alert closes
-  the page first; a page left alone 2 min goes back to the meters (Focus not
-  while it runs). Serial `page next|prev|meters|weather|focus` for QA.
+- **Pages** (`pages.{h,cpp}`, `page_*.cpp`; data parsed in `weather.cpp` and
+  `feeds.cpp`): full views in the meters' place, reached with the side
+  buttons on two-button boards (short press BOOT back / KEY forward; held
+  past 400 ms the button sends its HID key instead: `nav_button_tick()` in
+  `main.cpp`). Order: meters → Pace `{"k":"h"}` → Activity `{"k":"a"}` →
+  Focus (`focus.cpp`, device-local) → System `{"k":"sys"}` → Weather
+  `{"k":"wx"}` → Stocks `{"k":"q"}` → meters; a page without fresh data is
+  skipped. A page is built into `ui_page_layer()` (above the meters, below
+  the corner Clawd and the battery) when it opens and deleted when it
+  closes (peak LVGL pool ~37 KB in the sim; `pages:` serial lines print it),
+  and lays out inside the meters' card area (`page_area()`), so it fits every
+  panel shape. While one is up the director is covered
+  (`director_set_covered`): Clawd sits still in his seat, nothing else
+  stages, taps belong to the page (tap with no page action = carousel on /
+  off, kept in NVS). The carousel steps every 30 s and leaves the meters
+  only when `director_settled()`. An alert closes the page first; without
+  the carousel a page left alone 2 min goes back to the meters (Focus not
+  while it runs). Pace zone 2 lifts the mood group to Heavy
+  (`usage_rate_set_pace`). `{"k":"ss"}` (Claude's service status) rides
+  the meters' status line (`ui_set_service_status`). Serial `page
+  next|prev|<name>` and `carousel [0|1]` for QA.
 - **Sound**: `ding.cpp` synthesizes the one sound (a C#5 ding, mirrored by
   the desktop's `chime.rs`); `chime.cpp` streams it through the ES8311.
 - **Generated, never hand-edited**: `splash_animations.h` (only

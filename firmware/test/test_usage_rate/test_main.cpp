@@ -88,6 +88,19 @@ static void test_reset_ignored_on_replay(void) {
     TEST_ASSERT_TRUE(usage_rate_sample_at(T0 + 2 * MIN, 0, false));
 }
 
+static void test_pace_lifts_to_heavy_until_ttl(void) {
+    usage_rate_set_pace_at(T0, 2);
+    TEST_ASSERT_EQUAL(RATE_HEAVY, usage_rate_group_at(T0 + MIN));
+    TEST_ASSERT_EQUAL(RATE_IDLE, usage_rate_base_group_at(T0 + MIN));   // base untouched
+    TEST_ASSERT_EQUAL(RATE_IDLE, usage_rate_group_at(T0 + USAGE_RATE_PACE_TTL_MS));
+    usage_rate_set_pace_at(T0, 2);
+    usage_rate_set_pace_at(T0 + MIN, 1);                                // calmer: lift ends
+    TEST_ASSERT_EQUAL(RATE_IDLE, usage_rate_group_at(T0 + 2 * MIN));
+    usage_rate_set_pace_at(T0, 2);
+    usage_rate_clear();
+    TEST_ASSERT_FALSE(usage_rate_pace_hot_at(T0));
+}
+
 static void test_activity_lifts_never_lowers(void) {
     usage_rate_set_activity_at(T0, 2);
     TEST_ASSERT_EQUAL_INT(RATE_ACTIVE, usage_rate_group_at(T0));     // idle rate, lifted
@@ -137,6 +150,7 @@ int main(void) {
     RUN_TEST(test_reset_ignored_on_replay);
     RUN_TEST(test_activity_lifts_never_lowers);
     RUN_TEST(test_activity_expires);
+    RUN_TEST(test_pace_lifts_to_heavy_until_ttl);
     RUN_TEST(test_close_samples_merge);
     RUN_TEST(test_millis_wraparound);
     return UNITY_END();

@@ -1304,6 +1304,15 @@ const CONFIG_TEMPLATE: &str = "\
 # pinned with coordinates when the lookup picks the wrong one.
 # weather_location = Warsaw
 # weather_coords = 52.23, 21.01
+# The device's Stocks page (Yahoo Finance): up to 5 symbols, each optionally
+# with the name to show.
+# stocks = AMD, NVDA=NVIDIA, R3NK.DE=Renk
+# The other pages: Pace, Activity and Claude's service status are on unless
+# turned off; the System page (this computer's stats, Linux only) is off.
+# pace_page = off
+# activity_page = off
+# service_status = off
+# system_stats = on
 ";
 
 /// Open the config file in the system editor, creating it first if needed.

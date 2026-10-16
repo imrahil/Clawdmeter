@@ -11,6 +11,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::attention::to_ascii;
+use crate::feeds::{agent, encode_component, get_json, Schedule};
 
 /// Forecast tiles under today's reading (`WX_FORECAST_DAYS` in firmware).
 pub const FORECAST_DAYS: usize = 3;
@@ -207,76 +208,29 @@ pub fn payload_from_forecast(forecast: &Value, label: &str, aqi: Option<f64>) ->
     })
 }
 
-/// When to fetch. Pure: the daemon asks [`WeatherSchedule::due`] each tick.
-#[derive(Debug, Clone, Default)]
-pub struct WeatherSchedule {
-    next_at: i64,
-    /// The last good write, re-sent after a reconnect (a rebooted device
-    /// starts without it).
-    pub last: Option<Vec<u8>>,
+/// When to fetch: every 15 minutes, 2 after a failure.
+pub fn schedule() -> Schedule {
+    Schedule::every(INTERVAL_SECS, RETRY_SECS)
 }
 
-impl WeatherSchedule {
-    /// A fetch should start now.
-    pub fn due(&self, now: i64) -> bool {
-        now >= self.next_at
-    }
-    /// A fetch just started: don't start another until it reports.
-    pub fn started(&mut self, now: i64) {
-        self.next_at = now + INTERVAL_SECS;
-    }
-    /// It worked.
-    pub fn succeeded(&mut self, now: i64, write: Vec<u8>) {
-        self.next_at = now + INTERVAL_SECS;
-        self.last = Some(write);
-    }
-    /// It failed: try again soon.
-    pub fn failed(&mut self, now: i64) {
-        self.next_at = now + RETRY_SECS;
-    }
-    /// The place changed: fetch at once, forget the old reading.
-    pub fn reset(&mut self) {
-        *self = WeatherSchedule::default();
-    }
-}
-
-const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
-
-fn get_json(agent: &ureq::Agent, url: &str) -> Result<Value, String> {
-    let mut resp =
-        agent.get(url).header("User-Agent", &crate::oauth::user_agent()).call().map_err(|e| e.to_string())?;
-    let status = resp.status().as_u16();
-    if !(200..300).contains(&status) {
-        return Err(format!("HTTP {status}"));
-    }
-    let body = resp.body_mut().read_to_string().map_err(|e| e.to_string())?;
-    serde_json::from_str(&body).map_err(|e| e.to_string())
-}
-
-fn encode_query(s: &str) -> String {
-    s.bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
+fn get(agent: &ureq::Agent, url: &str) -> Result<Value, String> {
+    get_json(agent, url, &crate::oauth::user_agent())
 }
 
 /// Look the place up and fetch the reading (blocking: run it off the
 /// daemon's loop). The air quality is a second call; the weather still goes
 /// out without it.
 pub fn fetch(place: &WeatherPlace) -> Result<WeatherPayload, String> {
-    let agent: ureq::Agent =
-        ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(TIMEOUT)).build().into();
+    let agent = agent();
     let (lat, lon, label) = match place.coords.map(Coords::degrees) {
         Some((lat, lon)) => (lat, lon, place.name.clone()),
         None => {
             let query = place.name.split(',').next().unwrap_or("").trim();
             let url = format!(
                 "https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json&name={}",
-                encode_query(query)
+                encode_component(query)
             );
-            let hit = get_json(&agent, &url)?
+            let hit = get(&agent, &url)?
                 .get("results")
                 .and_then(|r| r.get(0))
                 .cloned()
@@ -294,8 +248,8 @@ pub fn fetch(place: &WeatherPlace) -> Result<WeatherPayload, String> {
          &daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset",
         FORECAST_DAYS + 1
     );
-    let forecast = get_json(&agent, &url)?;
-    let aqi = get_json(
+    let forecast = get(&agent, &url)?;
+    let aqi = get(
         &agent,
         &format!(
             "https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lon}&current=european_aqi"
@@ -394,25 +348,5 @@ mod tests {
         assert_eq!(c.as_config(), "52.23, 21.01");
         assert_eq!(parse_coords("52.23"), None);
         assert_eq!(parse_coords("95, 10"), None);
-    }
-
-    #[test]
-    fn schedule() {
-        let mut s = WeatherSchedule::default();
-        assert!(s.due(0));
-        s.started(100);
-        assert!(!s.due(101));
-        s.failed(110);
-        assert!(s.due(110 + RETRY_SECS));
-        s.succeeded(200, b"{}".to_vec());
-        assert!(!s.due(200 + INTERVAL_SECS - 1) && s.due(200 + INTERVAL_SECS));
-        assert!(s.last.is_some());
-        s.reset();
-        assert!(s.due(0) && s.last.is_none());
-    }
-
-    #[test]
-    fn query_encoding() {
-        assert_eq!(encode_query("Nowy Sącz"), "Nowy%20S%C4%85cz");
     }
 }

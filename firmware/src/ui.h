@@ -33,6 +33,11 @@ void ui_set_pair_hint(PairHint hint);
 // and the whimsical status line resumes.
 void ui_set_alert_text(const char* message);
 
+// Claude's service status (the app's {"k":"ss"}, feeds.h): level 0 clears
+// it; 1 minor / maintenance, 2 major. Alternates with the status line's
+// verb on the meters.
+void ui_set_service_status(int level, const char* msg);
+
 // ---- Pages (pages.h) ----
 // The meters' layout, for pages that sit in the same slots (title, cards,
 // status line).

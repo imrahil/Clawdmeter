@@ -23,6 +23,9 @@ static uint8_t  head  = 0;          // next write slot
 static int      act_level = -1;
 static uint32_t act_ms    = 0;
 
+static bool     pace_hot  = false;
+static uint32_t pace_ms   = 0;
+
 static inline const Sample& at_age(uint8_t i) {   // 0 = newest
     return ring[(head + RING_SIZE - 1 - i) % RING_SIZE];
 }
@@ -32,6 +35,8 @@ void usage_rate_clear(void) {
     head  = 0;
     act_level = -1;
     act_ms = 0;
+    pace_hot = false;
+    pace_ms = 0;
 }
 
 bool usage_rate_sample_at(uint32_t now_ms, float session_pct, bool replay) {
@@ -93,8 +98,18 @@ int usage_rate_activity_at(uint32_t now_ms) {
     return act_level;
 }
 
+void usage_rate_set_pace_at(uint32_t now_ms, int zone) {
+    pace_hot = zone >= 2;
+    pace_ms = now_ms;
+}
+
+bool usage_rate_pace_hot_at(uint32_t now_ms) {
+    return pace_hot && (uint32_t)(now_ms - pace_ms) < USAGE_RATE_PACE_TTL_MS;
+}
+
 int usage_rate_group_at(uint32_t now_ms) {
     const int base = usage_rate_base_group_at(now_ms);
-    const int act  = usage_rate_activity_at(now_ms);
+    int act = usage_rate_activity_at(now_ms);
+    if (usage_rate_pace_hot_at(now_ms)) act = RATE_HEAVY;
     return act > base ? act : base;
 }
