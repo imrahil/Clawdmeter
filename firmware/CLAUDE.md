@@ -26,7 +26,9 @@ pins and hardware gotchas, which loads when you work in that folder.
   `clawd_policy.cpp` holds the pure rules and every timing (`ClawdTuning`,
   `clawd_tuning_fast()` under `SIM_FAST`). There is no separate stage:
   `performer.cpp` plays the full-size scenes on the meters, in front of the
-  panels (PSRAM boards; C6 plays corner acts instead). Liveliness (`lv`,
+  panels (an image in PSRAM; without PSRAM a buffer-free `cell_sprite.cpp`
+  that draws the cells in LVGL's render, likewise the big walk-on and lurk
+  sprite in `mascot.cpp`). Liveliness (`lv`,
   1 No-nonsense … 5 All-nonsense, kept in NVS by `clawd_prefs.cpp`) acts
   only through `clawd_tuning_scaled()`; add new behaviour to the tuning
   rather than checking the level elsewhere. The module map, every beat, the
@@ -72,6 +74,8 @@ pins and hardware gotchas, which loads when you work in that folder.
 
 **C6 boards have no PSRAM.** Shared code gates on `BOARD_HAS_PSRAM` (absent on
 C6) and allocates LVGL and animation buffers with `MALLOC_CAP_INTERNAL`. The
+full-size Clawd has no buffer there (cell sprites); `SIM_NO_PSRAM=1` runs
+that path in the sim. The
 `screenshot` serial command is compiled out (`LV_USE_SNAPSHOT=0`), so C6 UI
 changes must be eyeballed on hardware.
 

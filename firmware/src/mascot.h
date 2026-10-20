@@ -13,8 +13,10 @@
 // gaps, mood-picked acts (never the same twice running) and the lurk trip.
 //
 // The corner sprite works on every board (its ~23 KB buffer falls back to
-// internal RAM); the full-size sprite needs PSRAM (~250 KB). Without it the
-// lurk trip is skipped and attention is a wave and point from his seat.
+// internal RAM). The full-size sprite is an image in PSRAM (~250 KB), or
+// without PSRAM a cell sprite with no buffer (cell_sprite.h). Only if
+// neither exists is the lurk trip skipped and attention a wave and point
+// from his seat.
 
 lv_obj_t* mascot_create(lv_obj_t *parent, int slot_x, int feet_y, int cell);
 void mascot_tick(void);
@@ -41,7 +43,7 @@ void mascot_return(int from_side, uint16_t speed_pct); // -1 left / +1 right edg
 // speed up a walk home. True when he's home or on his way; false while the
 // attention Clawd owns him.
 bool mascot_hurry_home(void);
-bool mascot_lurk(void);              // QA: start a lurk trip now (seated, PSRAM only)
+bool mascot_lurk(void);              // QA: start a lurk trip now (seated)
 void mascot_place_away(void);        // off screen now (a curtain is covering)
 void mascot_reset(void);             // seated now, nothing pending
 

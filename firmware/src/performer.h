@@ -17,9 +17,9 @@
 // walking, or performing a scene. Scenes always end on the idle pose, so the
 // next thing starts from the same spot.
 //
-// Needs PSRAM for its full-screen RGB565A8 buffer (about 690 KB on a 480
-// panel). Without it performer_available() is false and the director plays
-// performances as corner acts instead.
+// With PSRAM he's a full-screen RGB565A8 image (about 690 KB on a 480
+// panel). Without it (the C6) a cell sprite paints his cells straight into
+// LVGL's render instead (cell_sprite.h): same look, no buffer.
 
 // feet_y: the screen row his feet stand on at home (the floor he performs on).
 void performer_init(lv_obj_t *parent, int feet_y);

@@ -1,5 +1,6 @@
 #include "mascot.h"
 #include "clawd_anim.h"
+#include "cell_sprite.h"
 #include "clawd_policy.h"
 #include "splash_geometry.h"
 #include "usage_rate.h"
@@ -12,9 +13,13 @@
 static lv_obj_t*      img = NULL;        // corner Clawd
 static uint8_t*       buf = NULL;        // planar RGB565A8, sized for the largest corner act
 static lv_image_dsc_t dsc;
-static lv_obj_t*      big_img = NULL;    // lurk + attention Clawd (PSRAM only)
-static uint8_t*       big_buf = NULL;
+static lv_obj_t*      big_img = NULL;    // lurk + attention Clawd: the image, or the cell sprite's object
+static uint8_t*       big_buf = NULL;    // PSRAM only
 static lv_image_dsc_t big_dsc;
+// Without PSRAM the big Clawd is a cell sprite (cell_sprite.h): his cells
+// drawn straight into LVGL's render, no ~250 KB buffer.
+static CellSprite     big_sprite;
+static bool           big_cells = false;
 
 static int cell = 3, slot_x = 0, feet_y = 0, screen_w = 480, screen_h = 480;
 static bool round_panel = false;
@@ -128,15 +133,22 @@ static int  right_edge(int y) { int a, b; panel_row_span(screen_w, screen_h, rou
 static void draw_corner(void) {
     render(anim, frame, facing < 0, &dsc, buf, img, cell, x, feet_y);
 }
+// The big Clawd: the image path, or the cell sprite pointed at the frame.
+static void render_big(const ClawdAnim* a, uint16_t f, bool mirror, int c, int px, int feet) {
+    if (!big_cells) { render(a, f, mirror, &big_dsc, big_buf, big_img, c, px, feet); return; }
+    if (!a) return;
+    if (big_sprite.cell != c) cell_sprite_set_cell(&big_sprite, c);
+    cell_sprite_set(&big_sprite, clawd_frame(a, f), a->w, a->h, a->palette, mirror);
+    lv_obj_set_pos(big_img, px, feet - a->h * c);
+    lv_obj_invalidate(big_img);
+}
 static void draw_big(void) {
-    render(anim, frame, mode == M_BIG_OUT, &big_dsc, big_buf, big_img,
-           big_cell, big_x0 + anim->ox * big_cell + big_dx, big_feet_y);
+    render_big(anim, frame, mode == M_BIG_OUT, big_cell, big_x0 + anim->ox * big_cell + big_dx, big_feet_y);
 }
 static void draw_lurk(void) {
     // He left stage left, so he peeks in from the RIGHT edge — mirrored (the
     // art is authored hanging off the left edge).
-    render(anim, frame, true, &big_dsc, big_buf, big_img, lurk_cell,
-           right_edge(lurk_feet_y) - anim->w * lurk_cell, lurk_feet_y);
+    render_big(anim, frame, true, lurk_cell, right_edge(lurk_feet_y) - anim->w * lurk_cell, lurk_feet_y);
 }
 
 static int  off_left_x(void) {
@@ -265,6 +277,10 @@ lv_obj_t* mascot_create(lv_obj_t* parent, int sx, int feet, int c) {
         big_img = lv_image_create(parent);
         lv_obj_clear_flag(big_img, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_flag(big_img, LV_OBJ_FLAG_HIDDEN);
+    } else if (big_bytes) {               // no PSRAM: draw his cells directly
+        cell_sprite_init(&big_sprite, parent, big_cell);
+        big_img = big_sprite.obj;
+        big_cells = true;
     }
     seat();
     return img;

@@ -123,6 +123,7 @@ SDL_VIDEODRIVER=dummy SIM_FAST=1 SIM_SCENARIO=sim/director.jsonl \
 | `SIM_TRACE=1` | Log director transitions and steps. |
 | `SIM_NO_TOUCH=1` | Play a board without a touchscreen: `B` (BOOT) dismisses an active alert before it does anything else. |
 | `SIM_NO_PWR=1` | Play a board without a PWR button (like the LCD-4): `P` does nothing and the pairing hint offers the touch-hold gesture. |
+| `SIM_NO_PSRAM=1` | Refuse the big PSRAM allocations, as on a C6: the full-size Clawd is drawn by cell sprites (`cell_sprite.cpp`) instead of images. |
 | `SIM_NO_BATTERY=1` | Start on USB power with no battery fitted (same as pressing `U`). |
 | `SIM_EDGE_WATCH=1` | Log non-black pixel counts in the bottom 16 rows and right 16 columns to expose stray edge rendering. |
 | `SIM_ROUND_EVEN=1` | Apply CO5300-style even-aligned flush rounding. |

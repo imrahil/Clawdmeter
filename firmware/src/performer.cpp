@@ -1,6 +1,7 @@
 #include "performer.h"
 #include "clawd_anim.h"
 #include "clawd_policy.h"
+#include "cell_sprite.h"
 #include "field.h"
 #include "perf.h"
 #include "splash_geometry.h"
@@ -21,9 +22,13 @@
 
 static int       cell = 8;
 static int       dim = GRID * 8;               // the buffer is dim x dim px
-static lv_obj_t* img = NULL;
-static uint8_t*  buf = NULL;                   // planar RGB565A8: colour plane, then alpha
+static lv_obj_t* img = NULL;                   // the image, or the cell sprite's object
+static uint8_t*  buf = NULL;                   // planar RGB565A8: colour plane, then alpha (PSRAM)
 static lv_image_dsc_t dsc;
+// Without PSRAM: no buffer; a cell sprite draws drawn_cells directly
+// (cell_sprite.h). Everything else, invalidation included, is shared.
+static CellSprite sprite;
+static bool       use_cells = false;
 static bool      shown = false;                // img not hidden
 
 // ─── Mood groups ─────────────────────────────────────────────────────────────
@@ -115,14 +120,14 @@ static void set_hidden(void* on) {
 }
 
 static void render_cells(const uint8_t* cells, const uint16_t* palette) {
-    if (!buf || !img) return;
+    if (!img || (!buf && !use_cells)) return;
     bool any = false;
     for (int i = 0; i < GRID * GRID; i++) if (cells[i]) { any = true; break; }
 
     const bool repaint_all = palette != drawn_palette;
     int gx0 = GRID, gy0 = GRID, gx1 = -1, gy1 = -1;
     uint16_t* color = (uint16_t*)buf;
-    uint8_t*  alpha = buf + (size_t)dim * dim * 2;
+    uint8_t*  alpha = buf ? buf + (size_t)dim * dim * 2 : NULL;
     for (int gy = 0; gy < GRID; gy++) {
         for (int gx = 0; gx < GRID; gx++) {
             const uint8_t code = cells[gy * GRID + gx];
@@ -132,6 +137,7 @@ static void render_cells(const uint8_t* cells, const uint16_t* palette) {
             if (gx > gx1) gx1 = gx;
             if (gy < gy0) gy0 = gy;
             if (gy > gy1) gy1 = gy;
+            if (use_cells) continue;              // the sprite draws drawn_cells itself
             const uint16_t c = (code && palette && code < CLAWD_PALETTE_SIZE) ? palette[code] : 0;
             const uint8_t  a = code ? 255 : 0;
             for (int d = 0; d < cell; d++) {
@@ -144,6 +150,7 @@ static void render_cells(const uint8_t* cells, const uint16_t* palette) {
     memcpy(drawn_cells, cells, sizeof(drawn_cells));
     drawn_palette = palette;
     cells_any = any;
+    if (use_cells) cell_sprite_set(&sprite, drawn_cells, GRID, GRID, palette, false);
 
     if (any && !shown) {                          // he's coming on: nothing drawn yet
         field_quietly(img, set_hidden, (void*)0);
@@ -286,21 +293,28 @@ void performer_init(lv_obj_t* parent, int feet_y) {
     const size_t bytes = (size_t)dim * dim * 3;
     // PSRAM only: without it there's no room for a screen-sized sprite, and
     // the director plays performances as corner acts.
-    buf = (uint8_t*)heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
-    if (!buf) { Serial.println("performer: no PSRAM, corner acts only"); return; }
-    memset(buf, 0, bytes);
+    // With PSRAM a screen-sized image; without it a cell sprite that draws
+    // the grid straight into LVGL's render (no buffer at all).
     memset(drawn_cells, 0, sizeof(drawn_cells));
-
-    dsc.header.w = dim;
-    dsc.header.h = dim;
-    dsc.header.cf = LV_COLOR_FORMAT_RGB565A8;
-    dsc.header.stride = dim * 2;
-    dsc.data = buf;
-    dsc.data_size = bytes;
-
-    img = lv_image_create(parent);
-    lv_image_set_src(img, &dsc);
-    lv_obj_clear_flag(img, LV_OBJ_FLAG_CLICKABLE);
+    buf = (uint8_t*)heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
+    if (buf) {
+        memset(buf, 0, bytes);
+        dsc.header.w = dim;
+        dsc.header.h = dim;
+        dsc.header.cf = LV_COLOR_FORMAT_RGB565A8;
+        dsc.header.stride = dim * 2;
+        dsc.data = buf;
+        dsc.data_size = bytes;
+        img = lv_image_create(parent);
+        lv_image_set_src(img, &dsc);
+        lv_obj_clear_flag(img, LV_OBJ_FLAG_CLICKABLE);
+    } else {
+        use_cells = true;
+        cell_sprite_init(&sprite, parent, cell);
+        cell_sprite_set(&sprite, drawn_cells, GRID, GRID, NULL, false);
+        img = sprite.obj;
+        Serial.println("performer: no PSRAM, drawing cells directly");
+    }
     // His feet (art row 37) on the floor; centred across. The grid may hang
     // past the bottom edge; nothing is drawn there.
     lv_obj_set_pos(img, (c.width - dim) / 2, feet_y - (ANCHOR_Y + CLAWD_ART_H) * cell);

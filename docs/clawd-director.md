@@ -15,7 +15,7 @@ what you want (see "A tap on the meters" below).
 | `firmware/src/clawd_director.{h,cpp}` | Owns the rooms and runs the beats. It is the only module that decides what Clawd does next. |
 | `firmware/src/clawd_policy.{h,cpp}` | Pure decision rules, unit-tested in `test/test_clawd_policy`: show gate and show group, screensaver gate, where attention returns to, how long a reaction waits for him, the corner seat's headroom, turn tracker, no-repeat picker, jitter, the resting face's rhythm, what a tap on the meters earns (the peek, how he sets off), where the face looks and how long it stays curious, and all tunables (`ClawdTuning`). |
 | `firmware/src/mascot.{h,cpp}` | Clawd on the meters: the corner Clawd in his seat, plus the full-size sprite used for the lurk trip and the attention walk-on. Does in-room secondary action (idle acts, lurk trips) when the director allows it. |
-| `firmware/src/performer.{h,cpp}` | Clawd performing on the meters: the official scenes at full size on a 60×60-cell grid, in front of the meters. He stands, walks on and off through either edge, or performs a scene. PSRAM only. |
+| `firmware/src/performer.{h,cpp}` | Clawd performing on the meters: the official scenes at full size on a 60×60-cell grid, in front of the meters. He stands, walks on and off through either edge, or performs a scene. With PSRAM a screen-sized image; without it a cell sprite (`cell_sprite.{h,cpp}`) that draws his cells straight into LVGL's render. |
 | `firmware/src/face.{h,cpp}` | The #198 face: a field on `lv_layer_top()` with the eyes as small LVGL rectangles on it. It is the screensaver and the held peek. |
 | `firmware/src/face_motion.{h,cpp}` | The face's rise and drop as a pure function of time (vertical only, one size: overshoot and settle, anticipation, follow-through; see "The face's motion"), unit-tested in `test/test_face_motion`. |
 | `firmware/src/field.{h,cpp}` | A flat-colour shape on an overlay layer (a rectangle plus two small extra rectangles) that redraws only the strips that change colour (see "Redraw cost and frame rate"). The face is a field. |
@@ -366,12 +366,21 @@ a board capability, with no NVS override, desktop setting, or serial toggle.
 - Corner Clawd: animated. Its buffer, sized for the largest corner act
   (jumping happy, 28×30 cells × 3 px, about 23 KB), falls back to internal RAM.
 - Face: plain LVGL objects, the same as on S3.
-- No performer (its buffer is about 690 KB): a show is corner acts (pointing,
-  dancing or jumping happy twice, a wave) and a calm dip is the corner Clawd
-  walking back to his seat for a while (see Beats).
-- No full-size sprite (about 250 KB), so there's no lurk trip, and attention
-  is a wave and point in his seat (he walks back to it first if he's out),
-  for the attention animation's time.
+- Full-size Clawd (the performer, the attention walk-on and the lurk trip):
+  the same beats as on S3. The image buffers (about 690 KB and 250 KB) don't
+  fit, so a cell sprite (`firmware/src/cell_sprite.{h,cpp}`) stands in: an
+  LVGL object whose `LV_EVENT_DRAW_MAIN` paints the frame's cells as
+  rectangles, one per run of same-coloured cells in a row, only for the rows
+  and columns inside the area being redrawn. Empty cells draw nothing, so the
+  meters show through exactly as with the image. It needs a few dozen bytes
+  and leaves the LVGL pool's peak where it was (34 KB in the sim). The
+  invalidation is shared with the image path, so a frame costs what moved.
+  In the sim (`SIM_NO_PSRAM=1`) the walk-on, walk-off and lurk frames match
+  the image path pixel for pixel. Frame time on the C6 is the real check:
+  the `perf` serial command reports it.
+- The seat fallbacks below (a show as corner acts, attention as a wave and
+  point in his seat, no lurk trip) remain for a board where even the cell
+  sprite can't be created.
 
 ## Buttons
 
@@ -509,9 +518,9 @@ On hardware that read as choppy.
   restacking a full-screen object would invalidate the whole screen even
   when it draws nothing, so those run with
   `lv_display_enable_invalidation(false)` around them (`field_quietly`).
-- **The performer** (PSRAM boards) repaints only the cells that changed and
-  invalidates their bounding box, instead of the whole screen-sized image
-  every frame, and is hidden (quietly, the same way) whenever he's off
+- **The performer** repaints only the cells that changed (into the image,
+  or nothing at all for the cell sprite) and invalidates their bounding box,
+  instead of the whole screen-sized image every frame, and is hidden (quietly, the same way) whenever he's off
   screen. A show in the sim averages about 18 k px/frame (7.7 % of the
   panel).
 - **Refresh period 16 ms** (`-DLV_DEF_REFR_PERIOD=16` in every env, which also
