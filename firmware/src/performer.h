@@ -3,13 +3,12 @@
 #include <stdbool.h>
 #include <lvgl.h>
 
-// Clawd performing on the meters: the official scenes at full size (the
-// 60x60-cell grid, 8 px cells on a 480 panel), walking on and off through
-// the screen edges. The director (clawd_director.cpp) decides when he
+// Clawd performing on the stage (stage.h, the black curtain over the
+// meters): the official scenes at full size (the 60x60-cell grid, 8 px
+// cells on a 480 panel), walking on and off through the screen edges. The director (clawd_director.cpp) decides when he
 // performs and what he does; nothing here starts on its own.
 //
-// He's drawn in front of the meters, fully opaque, like the attention
-// walk-on: while he performs he covers part of the panels, and a tap sends
+// He's drawn above the stage curtain and everything under it; a tap sends
 // him off.
 //
 // Performer model: one Clawd with an x offset (cells) from his authored home
@@ -21,7 +20,8 @@
 // panel). Without it (the C6) a cell sprite paints his cells straight into
 // LVGL's render instead (cell_sprite.h): same look, no buffer.
 
-// feet_y: the screen row his feet stand on at home (the floor he performs on).
+// feet_y: the screen row his feet stand on at home (the floor he performs on);
+// -1 centres his 60x60 grid on the panel (the stage, stage.h).
 void performer_init(lv_obj_t *parent, int feet_y);
 void performer_tick(void);
 bool performer_available(void);

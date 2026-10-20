@@ -24,9 +24,9 @@ pins and hardware gotchas, which loads when you work in that folder.
   are in `main.cpp` too.
 - **Clawd**: `clawd_director.cpp` owns the rooms and runs the beats;
   `clawd_policy.cpp` holds the pure rules and every timing (`ClawdTuning`,
-  `clawd_tuning_fast()` under `SIM_FAST`). There is no separate stage:
-  `performer.cpp` plays the full-size scenes on the meters, in front of the
-  panels (an image in PSRAM; without PSRAM a buffer-free `cell_sprite.cpp`
+  `clawd_tuning_fast()` under `SIM_FAST`). `stage.cpp` is a black curtain
+  that rises over the meters; `performer.cpp` plays the full-size scenes on
+  it (the screensaver, the tap peek, shows), centred (an image in PSRAM; without PSRAM a buffer-free `cell_sprite.cpp`
   that draws the cells in LVGL's render, likewise the big walk-on and lurk
   sprite in `mascot.cpp`). Liveliness (`lv`,
   1 No-nonsense … 5 All-nonsense, kept in NVS by `clawd_prefs.cpp`) acts
@@ -88,9 +88,11 @@ once from one script; the sim's controller mode behind it is
 
 1. **No `#ifdef BOARD_*` in shared code.** Add a `BoardCaps` field, a HAL
    function or a per-board file instead (`docs/porting/capability-flags.md`).
-2. **One Clawd on screen, ever.** Corner sprite, full-size sprite, performer
-   and face are never visible together; beats wait for `mascot_away()` /
-   `performer_visible()` / the face's drop before the next appears.
+2. **One Clawd on screen, ever.** Corner sprite, full-size sprite and
+   performer are never visible together; beats wait for `mascot_away()` /
+   `performer_visible()` before the next appears. The performer only ever
+   appears on the stage (`stage.cpp`, the black curtain over the meters),
+   and nothing else is on screen while the stage is up.
    `test/test_director` fuzzes the real director against fake actors and
    fails on any tick with two. Don't add a second creature (stale data dims
    the meters instead).

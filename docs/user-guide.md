@@ -111,7 +111,7 @@ entry on Windows.
 
 | Meters | Show | Screensaver | Attention |
 | --- | --- | --- | --- |
-| ![Meters](../screenshots/director/01-home-meters.png) | ![Show](../screenshots/director/06-show-scene.png) | ![Screensaver](../screenshots/director/15-screensaver-face.png) | ![Attention](../screenshots/director/20-attention-waves.png) |
+| ![Meters](../screenshots/director/01-home-meters.png) | ![Show](../screenshots/director/06-show-scene.png) | ![Screensaver](../screenshots/director/16-screensaver-scene.png) | ![Attention](../screenshots/director/20-attention-waves.png) |
 | Session and weekly usage | After sustained activity | After a quiet stretch | A session needs an answer |
 
 **Animation silliness** on the Device page sets how lively Clawd is. **No-nonsense**
@@ -132,11 +132,15 @@ the line, amber when it's ahead, and red at the limit. Off (the default),
 the bars go amber at 50% and red at 80%. A bar with no reset time yet keeps
 those colours, and spend-capped accounts are unchanged.
 
-The device boots to the meters. Clawd performs his shows right on them,
-in front of the panels. Tap a show or the screensaver to send him back to
-his seat.
-Tap the meters to bring Clawd's face up to the glass; tap again to send him
-back. A tap that wakes a sleeping panel only wakes it.
+The device boots to the meters, with the small Clawd in the top-left
+corner. For his full-size performances a black curtain rises over the
+meters and he performs on the black screen: a show after a busy stretch,
+the screensaver after a quiet one (scene after scene from his current
+mood), and whenever you tap the meters (he waves, then performs for up to
+5 minutes). Tap the black screen, or press a button, to send him off; the
+curtain drops and he walks back to his corner. When Claude needs you, the
+big Clawd still walks on over the meters, with the message on the status
+line. A tap that wakes a sleeping panel only wakes it.
 
 The device names what the session is waiting for in one short line:
 **Question for you**, **Permission needed!**, **Waiting for you!** (an idle

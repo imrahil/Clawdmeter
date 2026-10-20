@@ -1,12 +1,12 @@
 // Timed stand-ins for the director's actors. Each follows the real module's
-// contract (mascot.h, performer.h, face.h) closely enough that the
+// contract (mascot.h, performer.h, stage.h) closely enough that the
 // director's sequencing runs unchanged; the durations are round numbers in
 // the right range. Visibility is conservative: a walk counts as on screen
 // until it ends.
 #include "fake_world.h"
 #include "mascot.h"
 #include "performer.h"
-#include "face.h"
+#include "stage.h"
 #include "ui.h"
 #include "idle.h"
 #include "minimal_mode.h"
@@ -205,27 +205,23 @@ void performer_tick(void) {
     else if (p_state == P_WALK_OUT) p_state = P_OFF;
 }
 
-// ─── Face (face.h) ───────────────────────────────────────────────────────────
-enum FState { F_HIDDEN, F_RISING, F_UP, F_DROPPING };
-static FState   f_state = F_HIDDEN;
-static uint32_t f_until = 0, f_busy_until = 0;
+// ─── Stage (stage.h) ─────────────────────────────────────────────────────────
+enum SState { S_DOWN, S_RISING, S_UP, S_DROPPING };
+static SState   s_state = S_DOWN;
+static uint32_t s_until = 0;
 
-void face_init(void) {}
-void face_tick(void) {
-    if (!done(f_until)) return;
-    if (f_state == F_RISING) f_state = F_UP;
-    else if (f_state == F_DROPPING) f_state = F_HIDDEN;
+void stage_init(lv_obj_t*) {}
+void stage_tick(void) {
+    if (!done(s_until)) return;
+    if (s_state == S_RISING) s_state = S_UP;
+    else if (s_state == S_DROPPING) s_state = S_DOWN;
 }
-void face_rise(void) { f_state = F_RISING; f_until = now() + 860; }
-void face_rise_toward(int) { face_rise(); }
-void face_drop(void) { f_state = F_DROPPING; f_until = now() + 510; }
-void face_hide_now(void) { f_state = F_HIDDEN; }
-bool face_visible(void) { return f_state != F_HIDDEN; }
-bool face_moving(void) { return f_state == F_RISING || f_state == F_DROPPING; }
-bool face_busy(void) { return face_moving() || !done(f_busy_until); }
-void face_blink(bool twice) { f_busy_until = now() + (twice ? 500 : 250); }
-void face_set_resting(bool) {}
-void face_look_at_x(int, uint32_t hold_ms) { f_busy_until = now() + hold_ms + 300; }
+void stage_rise(void) { if (s_state == S_DOWN || s_state == S_DROPPING) { s_state = S_RISING; s_until = now() + 450; } }
+void stage_drop(void) { if (s_state == S_UP || s_state == S_RISING) { s_state = S_DROPPING; s_until = now() + 380; } }
+void stage_hide_now(void) { s_state = S_DOWN; }
+bool stage_visible(void) { return s_state != S_DOWN; }
+bool stage_moving(void) { return s_state == S_RISING || s_state == S_DROPPING; }
+bool fake_stage_up(void) { return s_state == S_UP; }
 
 // ─── The situation ───────────────────────────────────────────────────────────
 bool ui_meters_live(void) { return world.meters_live; }
@@ -233,6 +229,7 @@ void ui_set_alert_text(const char*) {}
 bool idle_is_asleep(void) { return world.asleep; }
 bool minimal_mode(void) { return false; }
 int  usage_rate_base_group(void) { return RATE_ACTIVE; }
+int  usage_rate_group(void) { return RATE_ACTIVE; }
 int  signals_activity(void) { return world.activity; }
 int  clawd_anim_index(const char*) { return 0; }
 
@@ -247,7 +244,7 @@ OnScreen fake_on_screen(void) {
                 m_mode == M_SEAT_ATTN);
     s.big = (m_mode == M_LURK || m_mode == M_BIG_IN || m_mode == M_BIG_ACT || m_mode == M_BIG_OUT);
     s.performer = performer_visible();
-    s.face = face_visible();
+    s.stage = stage_visible();
     return s;
 }
 
@@ -255,5 +252,5 @@ bool fake_corner_seated_still(void) { return m_mode == M_SEATED; }
 bool fake_attention_animating(void) { return mascot_in_attention(); }
 
 int fake_clawds(const OnScreen& s) {
-    return (int)s.corner + (int)s.big + (int)s.performer + (int)s.face;
+    return (int)s.corner + (int)s.big + (int)s.performer;
 }

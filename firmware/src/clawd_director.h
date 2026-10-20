@@ -3,19 +3,20 @@
 #include "data.h"
 #include "signals.h"
 
-// The director: one Clawd, on the meters, driven by the situation.
+// The director: one Clawd, driven by the situation.
 //
 //   meters  home and default; every path ends here. The corner Clawd sits in
-//           his seat and does small acts (mascot.h). He also performs here,
-//           full size in front of them (performer.h): a treat after a busy
-//           stretch, or a calm dip during the screensaver.
-//   face    the #198 face resting on the glass (face.h): the screensaver,
-//           and the peek when you tap the meters.
+//           his seat and does small acts (mascot.h); for an alert the big
+//           Clawd walks on over the meters.
+//   stage   a black curtain rises over the meters (stage.h) and he performs
+//           on it full size (performer.h): the screensaver, the peek when
+//           you tap the meters, and the show after a busy stretch.
 //
-// Rules of continuity: only ever one Clawd (corner sprite, full-size sprite,
-// performer or face); he enters and leaves through an edge; the screen never
-// hard-cuts. A tap during a performance or on the face means "show me the
-// meters"; on the meters themselves it's tapping the aquarium: he reacts.
+// Rules of continuity: only ever one Clawd (corner sprite, full-size sprite
+// or performer); he enters and leaves through an edge; the screen never
+// hard-cuts (the stage rises and drops only with nobody on screen). A tap
+// on the stage means "show me the meters"; on the meters themselves it's
+// tapping the aquarium: he comes out on the stage.
 //
 // Beats (design system §09): notice, show, tap → meters, screensaver + wake,
 // attention, fresh-window joy, long-turn wave, and the tap-on-the-meters
@@ -23,7 +24,7 @@
 // Minimal mode collapses all of it to a still Clawd. See
 // docs/clawd-director.md.
 
-enum DirectorRoom { ROOM_METERS, ROOM_FACE };
+enum DirectorRoom { ROOM_METERS, ROOM_STAGE };
 
 void director_init(void);          // after ui_init()
 void director_tick(void);
@@ -35,8 +36,8 @@ void director_alert_clear(void);            // the session moved on
 bool director_take_dismissed(void);         // an alert ended on the device since the last call
 
 // Any touch press at screen x (wired internally to LVGL). On the meters it's
-// tapping the aquarium: the face comes up, curious, for a while (a tap on it
-// sends it back); anywhere else it means "show me the meters".
+// tapping the aquarium: he comes out on the stage for a while (a tap there
+// sends him back); anywhere else it means "show me the meters".
 void director_tap(int x);
 // While on, the panel is the pairing control (the touch-hold re-pair on
 // boards without a PWR button): a tap on the meters still counts as you
@@ -62,16 +63,15 @@ void director_set_attn_anim(int seconds);
 // SIM_TRACE=1 for walkthrough timings). Beat changes always print.
 void director_set_trace(bool on);
 
-// A page (Pace … Stocks: pages.h) covers the meters. cards. Turning it on
-// ends whatever was staged at once (the page change is the cut): the face
+// A page (Pace … Stocks: pages.h) covers the meters' cards. Turning it on
+// ends whatever was staged at once (the page change is the cut): the stage
 // and the performer go, he's back in his seat, and he stays there, idling,
 // while it's on: no show, screensaver or peek, and taps belong to the page.
 // An alert never runs covered: main.cpp closes the page first.
 void director_set_covered(bool on);
 // An alert is up (pages stay closed until it ends).
 bool director_alerting(void);
-// Nothing is staged: he's in his seat (not on a trip, no show, face or
-// alert), so the carousel may cover the meters without cutting a beat.
+// Nothing is staged: he's in his seat (not on a trip, no stage or alert), so the carousel may cover the meters without cutting a beat.
 bool director_settled(void);
 
 DirectorRoom director_room(void);

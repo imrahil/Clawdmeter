@@ -33,7 +33,7 @@ The simulator HAL and Arduino shims live in `firmware/src/boards/sim/`.
 
 | Input | Action |
 | --- | --- |
-| Mouse click or left-drag | Touch the screen. On the meters, bring up Clawd's face; tap again to return. During a show or the screensaver, send him back to his seat. A waking tap only wakes the panel. |
+| Mouse click or left-drag | Touch the screen. On the meters, Clawd comes out on the stage (the black screen); tap again to return. During a show or the screensaver, send him back to his seat. A waking tap only wakes the panel. |
 | Space | Pause or resume scenario playback. |
 | Left / Right | Step to a scenario state and pause playback. |
 | 1–9 | Jump to the corresponding state, if present, and pause. |
@@ -108,7 +108,7 @@ to choose another destination. For multiple captures and a touch event:
 
 ```bash
 SDL_VIDEODRIVER=dummy SIM_FAST=1 SIM_SCENARIO=sim/director.jsonl \
-  SIM_SHOTS="19500:blink.bmp,26000:scene.bmp,57000:face.bmp" \
+  SIM_SHOTS="19500:stage.bmp,26000:scene.bmp,57000:back.bmp" \
   SIM_TAPS="25000@300,250" .pio/build/sim/program
 ```
 
@@ -128,8 +128,8 @@ SDL_VIDEODRIVER=dummy SIM_FAST=1 SIM_SCENARIO=sim/director.jsonl \
 | `SIM_EDGE_WATCH=1` | Log non-black pixel counts in the bottom 16 rows and right 16 columns to expose stray edge rendering. |
 | `SIM_ROUND_EVEN=1` | Apply CO5300-style even-aligned flush rounding. |
 
-Use `SIM_CMDS="9000:perf"` to print redraw costs for the last face moves
-and performance. Desktop timings do not predict panel frame rates;
+Use `SIM_CMDS="9000:perf"` to print redraw costs for the last stage
+curtain rise and drop and the last performance. Desktop timings do not predict panel frame rates;
 pixels per frame are useful for comparing rendering work.
 
 ## Every panel at once

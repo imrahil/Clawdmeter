@@ -3,10 +3,10 @@
 #   SIM_CMDS="2500:clawd lurk;5200:prompt;34000:alert;67500:pwr;80000:prompt" \
 #   .pio/build/sim/program
 # 2.5 s  a lurk trip starts; 5.2 s a prompt: he cuts it short, hurries back, points
-# ~20 s  quiet: the screensaver (face, then a calm dip)
+# ~20 s  quiet: the screensaver (the stage rises, he performs)
 # 34 s   attention interrupts it; nobody comes, so after the 20 s (fast) timeout
-#        the big Clawd leaves, the small one stays out and the face comes back up
-# 67.5 s PWR during a calm dip: you're here, so he runs off and the corner
+#        the big Clawd leaves, the small one stays out and the stage comes back up
+# 67.5 s PWR on the screensaver: you're here, so he runs off, the stage drops, the corner
 #        Clawd walks home (PWR also steps the brightness)
 # 80 s   a prompt: he notices you and points (from the screensaver it would wake it)
 {"name":"quiet desk (hooks on)","hold_ms":120000,"s":3.0,"sr":295,"w":12.0,"wr":9000,"st":"allowed","ok":true,"t":1785474000,"tf":24,"a":0,"e":"s","es":1,"n":1}

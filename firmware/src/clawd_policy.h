@@ -15,26 +15,19 @@ struct ClawdTuning {
     uint32_t show_cooldown_ms;   // at most one show per this long
     uint32_t show_scene_ms;      // how long the show holds its scene loop
     uint32_t quiet_ms;           // no hook events / engagement → screensaver
-    uint32_t calm_min_ms;        // face rests this long (min..max, jittered)
-    uint32_t calm_max_ms;        //   before dipping into a calm performance
-    uint32_t calm_scene_ms;      // loop hold of a calm scene
+    uint32_t stage_rest_min_ms;  // on the stage he stands this long (min..max, jittered)
+    uint32_t stage_rest_max_ms;  //   between scenes (screensaver, peek)
+    uint32_t stage_scene_ms;     // loop hold of a stage scene
     uint32_t alert_timeout_ms;   // attention gives up after this long
     uint32_t long_turn_ms;       // a turn this long earns a wave on Stop
     uint32_t joy_pending_ms;     // a reset celebration may wait this long for him to get home
     uint32_t react_pending_ms;   // a notice / wave may wait this long for him to hurry home
-    uint32_t blink_min_ms;       // resting face: gap between blinks/glances
-    uint32_t blink_max_ms;
-    uint32_t peek_look_min_ms;   // the peeking face holds its look toward the tap (min..max),
-                                 // then rests, curious (peek_hold)
-    uint32_t peek_look_max_ms;
-    uint32_t peek_curious_ms;    // the peek's face stays up this long, then goes back on its own
-    uint8_t  peek_double_pct;    // chance the peek's blink is a double
-    uint8_t  peek_toward_pct;    // chance a curious resting glance goes back toward the tap
+    uint32_t peek_curious_ms;    // the peek's stage stays up this long, then he goes home on his own
 
     // What he does on his own at all, and how often (set by liveliness,
     // clawd_tuning_scaled). Taps and alerts always get their reaction.
     bool     shows;              // earned shows happen
-    bool     screensaver;        // the face comes up when you're away
+    bool     screensaver;        // the stage comes up when you're away
     bool     idle_acts;          // corner autonomy: idle acts and lurk trips
     bool     reactions;          // noticing a prompt, the long-turn wave, fresh-window joy
     uint8_t  show_min_activity;  // activity level (0-3) whose stretch earns a show
@@ -125,7 +118,7 @@ void show_gate_mark_shown(ShowGate* g, uint32_t now);   // also restarts the bus
 
 // ─── Screensaver gate ────────────────────────────────────────────────────────
 // Quiet = nothing has engaged him (hook event, tap, button, alert, usage
-// moving) for `quiet_ms`. The face is only for when he can tell you're away,
+// moving) for `quiet_ms`. The stage is only for when he can tell you're away,
 // so it needs either the hooks (fast clock) or a window that hasn't started
 // (the /usage "not started" state the slow clock can see on its own).
 struct QuietInput {
@@ -184,15 +177,16 @@ bool reaction_still_due(uint32_t queued_at, uint32_t now, const ClawdTuning* t);
 int corner_seat_feet(int feet_y, int tallest_px, int max_feet, int top_margin);
 
 // ─── A tap on the meters (the aquarium) ──────────────────────────────────────
-// Tapping the glass while he's on the meters always draws his attention: the
-// face comes up to see what you want (the peek). Seated, he reacts on the
-// next frame with a startled hop, then ducks out; already up and about (an
-// act, a walk, a lurk trip) he just heads out. Either way the face follows.
+// Tapping the glass while he's on the meters always draws his attention: he
+// comes out on the stage to see what you want (the peek). Seated, he reacts
+// on the next frame with a startled hop, then ducks out; already up and about
+// (an act, a walk, a lurk trip) he just heads out. Either way the stage
+// follows.
 // The meters being stale or pairing doesn't stop it: you asked.
 enum TapReact {
     TAP_NONE,       // minimal mode, or not on the meters (the tap means something else)
-    TAP_PEEK_HOP,   // seated or idling: startled hop, duck out, the face
-    TAP_PEEK,       // already moving or out: straight out through an edge, the face
+    TAP_PEEK_HOP,   // seated or idling: startled hop, duck out, the stage
+    TAP_PEEK,       // already moving or out: straight out through an edge, the stage
 };
 enum CornerState {
     CORNER_FREE,   // seated, or in an idle act of his own (interruptible)
@@ -200,19 +194,18 @@ enum CornerState {
     CORNER_OUT,    // away from his seat on his own (lurk trip)
 };
 struct TapInput {
-    bool        on_meters;     // the director is home or in a corner beat (nothing staged, no face)
+    bool        on_meters;     // the director is home or in a corner beat (nothing staged)
     bool        minimal;       // minimal mode: Clawd stays still
     CornerState corner;
 };
 TapReact clawd_tap_react(const TapInput* in);
 
-// The peek's face is curious for a while: after the look and the blink it
-// rests on the glass (irregular blinks, some double, glances that keep going
-// back toward where you tapped) for peek_curious_ms, then goes back on its
-// own (drop, he walks home). A tap drops it right away (the acknowledging
-// blink first). Prompts, stops, usage moving, buttons, a fresh window, an
-// earned show and the meters going stale neither drop it nor get their usual
-// corner reaction (he's up at the glass); they still count as engagement.
+// The peek's stage stays up for a while: he waves, then performs scene
+// after scene for peek_curious_ms, then goes home on his own (he runs off,
+// the stage drops, he walks to his seat). A tap ends it right away. Prompts,
+// stops, usage moving, buttons, a fresh window, an earned show and the
+// meters going stale neither end it nor get their usual corner reaction
+// (he's on the stage); they still count as engagement.
 // Attention interrupts it like anything else and ends on the meters
 // (ATTN_FROM_HOME). The screensaver can't start under it: the tap that
 // raised it is engagement, and peek_curious_ms < quiet_ms.
@@ -222,27 +215,3 @@ enum PeekHold {
 };
 PeekHold peek_hold(uint32_t up_since, uint32_t now, const ClawdTuning* t);
 
-// Where the peeking face looks: a glance proportional to how far from the
-// centre the tap landed, ±max_px at the edges (the far eye then travels 1.5x
-// that, face_eye_offsets).
-int peek_glance_px(int tap_x, int width, int max_px);
-
-// ─── Resting face behaviour ──────────────────────────────────────────────────
-// What the resting face does next, and when. Blinks are irregular and
-// sometimes double; the rest are glances where the far eye travels further.
-enum FaceAct { FACE_BLINK, FACE_DOUBLE_BLINK, FACE_GLANCE_LEFT, FACE_GLANCE_RIGHT };
-struct FacePlan { FaceAct act; uint32_t gap_ms; };
-FacePlan face_plan_next(ClawdRng* r, const ClawdTuning* t);
-
-// A resting glance (FACE_GLANCE_LEFT / RIGHT) as eye offset px. While the
-// face is curious about a tap (`tap_g` != 0, the peek_glance_px of it), a
-// glance goes back toward the tap peek_toward_pct of the time; otherwise it's
-// the plain ±glance_px.
-int face_glance_px(FaceAct act, int glance_px, int tap_g, ClawdRng* r, const ClawdTuning* t);
-
-// Glance geometry: eye x offsets for a glance of `g` px (negative = left).
-// The eye on the far side of the glance travels 1.5x (#198).
-static inline void face_eye_offsets(int g, int* left_dx, int* right_dx) {
-    *left_dx  = g < 0 ? (g * 3) / 2 : g;
-    *right_dx = g > 0 ? (g * 3) / 2 : g;
-}

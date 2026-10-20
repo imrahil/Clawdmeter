@@ -1,5 +1,6 @@
 #include "ui.h"
 #include "performer.h"
+#include "stage.h"
 #include "mascot.h"
 #include "clawd_anim.h"
 #include "clawd_policy.h"
@@ -609,11 +610,11 @@ void ui_init(void) {
         }
     }
 
-    // Clawd performs in front of the meters, fully drawn, like the
-    // attention walk-on (a tap sends him off). Created last so he's on top
-    // of everything on the screen. His feet stand on the bottom edge of the
-    // last panel, clear of the (Clawd-orange) status line.
-    performer_init(scr, L.card[1].y + L.card[1].h);
+    // Clawd performs full size on the stage: a black curtain over
+    // everything above (meters, pages, battery, the corner seat), and him
+    // on top of it, centred like v1's splash. Created last for that order.
+    stage_init(scr);
+    performer_init(scr, -1);
 
     lv_obj_set_style_text_align(lbl_anim, LV_TEXT_ALIGN_CENTER, 0);
     anim_verb_idx = fitting_verb(0);

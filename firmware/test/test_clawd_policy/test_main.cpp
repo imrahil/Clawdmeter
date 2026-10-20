@@ -1,5 +1,5 @@
 // clawd_policy: the director's decision rules (shows, screensaver, turns,
-// no-repeat picks, the resting face's rhythm).
+// no-repeat picks).
 //   pio test -d firmware -e native -f test_clawd_policy
 #include <unity.h>
 #include <string.h>
@@ -104,34 +104,6 @@ static void test_jitter_stays_within_40_percent(void) {
     TEST_ASSERT_TRUE(lo && hi);                    // actually varies
 }
 
-static void test_face_rhythm_is_irregular_with_some_double_blinks(void) {
-    ClawdRng r; clawd_rng_seed(&r, 1234);
-    int blinks = 0, doubles = 0, glances = 0;
-    uint32_t gmin = 0xFFFFFFFF, gmax = 0;
-    for (int i = 0; i < 1000; i++) {
-        FacePlan p = face_plan_next(&r, &T);
-        if (p.gap_ms < gmin) gmin = p.gap_ms;
-        if (p.gap_ms > gmax) gmax = p.gap_ms;
-        if (p.act == FACE_BLINK) blinks++;
-        else if (p.act == FACE_DOUBLE_BLINK) doubles++;
-        else glances++;
-    }
-    TEST_ASSERT_TRUE(gmin >= 2000 && gmax <= 6000);
-    TEST_ASSERT_TRUE(gmax - gmin > 3000);
-    TEST_ASSERT_TRUE(doubles > 50 && doubles < blinks);   // occasional, not the norm
-    TEST_ASSERT_TRUE(glances > 200);
-}
-
-static void test_far_eye_travels_further(void) {
-    int l, r;
-    face_eye_offsets(20, &l, &r);
-    TEST_ASSERT_EQUAL_INT(20, l);
-    TEST_ASSERT_EQUAL_INT(30, r);
-    face_eye_offsets(-20, &l, &r);
-    TEST_ASSERT_EQUAL_INT(-30, l);
-    TEST_ASSERT_EQUAL_INT(-20, r);
-}
-
 static void test_show_group_uses_base_rate_floored_at_active(void) {
     TEST_ASSERT_EQUAL_INT(2, clawd_show_group(0));   // idle usage, busy hooks: Active set
     TEST_ASSERT_EQUAL_INT(2, clawd_show_group(1));
@@ -206,12 +178,12 @@ static TapInput tap_in(CornerState c) {
     return in;
 }
 
-static void test_every_tap_on_the_meters_brings_the_face(void) {
-    // No cooldown and no small-reaction substitute: tap after tap, the face.
+static void test_every_tap_on_the_meters_brings_the_stage(void) {
+    // No cooldown and no small-reaction substitute: tap after tap, the stage.
     TapInput in = tap_in(CORNER_FREE);
     for (int i = 0; i < 10; i++) TEST_ASSERT_EQUAL_INT(TAP_PEEK_HOP, clawd_tap_react(&in));
     // Already up and about (a commanded act, walking home, a lurk trip): he
-    // heads straight out instead of hopping, but the face still comes.
+    // heads straight out instead of hopping, but the stage still comes.
     in = tap_in(CORNER_BUSY);
     TEST_ASSERT_EQUAL_INT(TAP_PEEK, clawd_tap_react(&in));
     in = tap_in(CORNER_OUT);
@@ -227,7 +199,7 @@ static void test_tap_keeps_its_meaning_off_the_meters_and_in_minimal(void) {
     TEST_ASSERT_EQUAL_INT(TAP_NONE, clawd_tap_react(&in));
 }
 
-static void test_peek_face_is_curious_for_five_minutes(void) {
+static void test_peek_stage_stays_up_to_five_minutes(void) {
     TEST_ASSERT_EQUAL_UINT32(5 * MIN, T.peek_curious_ms);
     const uint32_t up = 7 * SEC;
     const uint32_t keep[] = { up, up + 3 * SEC, up + 2 * MIN, up + T.peek_curious_ms - 1 };
@@ -240,8 +212,8 @@ static void test_peek_face_is_curious_for_five_minutes(void) {
 }
 
 static void test_curiosity_runs_out_before_the_screensaver_could_start(void) {
-    // The tap that raised the face is engagement, so the screensaver gate
-    // can't open while the peek is up; the face goes back first. Also with
+    // The tap that raised the stage is engagement, so the screensaver gate
+    // can't open while the peek is up; the peek ends first. Also with
     // the sim's compressed timings.
     TEST_ASSERT_TRUE(T.peek_curious_ms < T.quiet_ms);
     ClawdTuning f; clawd_tuning_fast(&f);
@@ -250,41 +222,9 @@ static void test_curiosity_runs_out_before_the_screensaver_could_start(void) {
     TEST_ASSERT_FALSE(screensaver_ready(&q, &T));
 }
 
-static void test_curious_glances_keep_going_back_to_the_tap(void) {
-    ClawdRng r; clawd_rng_seed(&r, 11);
-    int toward = 0, plain = 0;
-    for (int i = 0; i < 400; i++) {
-        const FaceAct a = (i & 1) ? FACE_GLANCE_LEFT : FACE_GLANCE_RIGHT;
-        const int g = face_glance_px(a, 20, 27, &r, &T);
-        if (g == 27) toward++;
-        else { TEST_ASSERT_EQUAL_INT(a == FACE_GLANCE_LEFT ? -20 : 20, g); plain++; }
-    }
-    TEST_ASSERT_TRUE(toward > 160 && toward < 320);    // ~60 %
-    TEST_ASSERT_TRUE(plain > 0);
-    // Not curious (the screensaver): plain glances only.
-    for (int i = 0; i < 50; i++) {
-        TEST_ASSERT_EQUAL_INT(-20, face_glance_px(FACE_GLANCE_LEFT, 20, 0, &r, &T));
-        TEST_ASSERT_EQUAL_INT(20, face_glance_px(FACE_GLANCE_RIGHT, 20, 0, &r, &T));
-    }
-}
-
-static void test_peek_looks_toward_the_tap(void) {
-    TEST_ASSERT_EQUAL_INT(0, peek_glance_px(240, 480, 30));
-    TEST_ASSERT_EQUAL_INT(30, peek_glance_px(480, 480, 30));
-    TEST_ASSERT_EQUAL_INT(-30, peek_glance_px(0, 480, 30));
-    TEST_ASSERT_EQUAL_INT(15, peek_glance_px(360, 480, 30));
-    TEST_ASSERT_EQUAL_INT(30, peek_glance_px(900, 480, 30));     // clamped
-    TEST_ASSERT_EQUAL_INT(0, peek_glance_px(10, 0, 30));         // degenerate width
-    // The far eye still travels 1.5x on a peek glance.
-    int l, rr;
-    face_eye_offsets(peek_glance_px(0, 480, 20), &l, &rr);
-    TEST_ASSERT_EQUAL_INT(-30, l);
-    TEST_ASSERT_EQUAL_INT(-20, rr);
-}
-
 static void test_attention_over_a_peek_ends_on_the_meters(void) {
     // A peek starts from the meters, so an alert over it is ATTN_FROM_HOME:
-    // it never puts the face back, however it ends.
+    // it never puts the stage back, however it ends.
     TEST_ASSERT_FALSE(attention_resumes_screensaver(ATTN_FROM_HOME, ATTN_END_TIMEOUT, false));
     TEST_ASSERT_FALSE(attention_resumes_screensaver(ATTN_FROM_HOME, ATTN_END_CLEAR, false));
     TEST_ASSERT_FALSE(attention_resumes_screensaver(ATTN_FROM_HOME, ATTN_END_TAP, true));
@@ -339,12 +279,12 @@ static void test_levels_in_between_interpolate(void) {
     for (int i = 2; i < 5; i++) {
         TEST_ASSERT_TRUE(l[i].show_after_ms > l[i + 1].show_after_ms);
         TEST_ASSERT_TRUE(l[i].show_cooldown_ms > l[i + 1].show_cooldown_ms);
-        TEST_ASSERT_TRUE(l[i].calm_min_ms > l[i + 1].calm_min_ms);
+        TEST_ASSERT_TRUE(l[i].stage_rest_min_ms > l[i + 1].stage_rest_min_ms);
         TEST_ASSERT_TRUE(l[i].idle_gap_pct > l[i + 1].idle_gap_pct);
         TEST_ASSERT_TRUE(l[i].long_turn_ms > l[i + 1].long_turn_ms);
         TEST_ASSERT_TRUE(l[i].shows && l[i].screensaver && l[i].idle_acts && l[i].reactions && l[i].spinner);
     }
-    TEST_ASSERT_TRUE(l[2].calm_min_ms <= l[2].calm_max_ms);
+    TEST_ASSERT_TRUE(l[2].stage_rest_min_ms <= l[2].stage_rest_max_ms);
     TEST_ASSERT_EQUAL_UINT8(3, l[4].show_min_activity);
 }
 
@@ -389,20 +329,16 @@ int main(int, char**) {
     RUN_TEST(test_long_turn_earns_a_wave);
     RUN_TEST(test_pick_never_repeats);
     RUN_TEST(test_jitter_stays_within_40_percent);
-    RUN_TEST(test_face_rhythm_is_irregular_with_some_double_blinks);
-    RUN_TEST(test_far_eye_travels_further);
     RUN_TEST(test_show_group_uses_base_rate_floored_at_active);
     RUN_TEST(test_show_variety_is_reachable_and_never_repeats);
     RUN_TEST(test_attention_returns_to_an_unattended_screensaver);
     RUN_TEST(test_attention_ends_home_when_you_showed_up);
     RUN_TEST(test_reaction_waits_for_him_to_hurry_home);
     RUN_TEST(test_corner_seat_leaves_headroom_for_the_jump);
-    RUN_TEST(test_every_tap_on_the_meters_brings_the_face);
+    RUN_TEST(test_every_tap_on_the_meters_brings_the_stage);
     RUN_TEST(test_tap_keeps_its_meaning_off_the_meters_and_in_minimal);
-    RUN_TEST(test_peek_looks_toward_the_tap);
-    RUN_TEST(test_peek_face_is_curious_for_five_minutes);
+    RUN_TEST(test_peek_stage_stays_up_to_five_minutes);
     RUN_TEST(test_curiosity_runs_out_before_the_screensaver_could_start);
-    RUN_TEST(test_curious_glances_keep_going_back_to_the_tap);
     RUN_TEST(test_attention_over_a_peek_ends_on_the_meters);
     RUN_TEST(test_only_device_ended_alerts_reach_the_app);
     RUN_TEST(test_some_nonsense_is_the_base_tuning);

@@ -1,6 +1,6 @@
 ---
 name: verifying-firmware-ui
-description: Checks firmware UI and Clawd behaviour changes visually - the simulator grid (every panel at once, scripted, deterministic), single-sim screenshots (SIM_SHOTS, SIM_CMDS, SIM_TAPS), director walkthroughs, then `clawd <beat>` + `screenshot` on a connected board, with the C6 no-screenshot limit. Use after any change to the meters, Clawd, the face, layouts or LVGL drawing, when asked to screenshot the device or simulator, or before opening a firmware UI PR.
+description: Checks firmware UI and Clawd behaviour changes visually - the simulator grid (every panel at once, scripted, deterministic), single-sim screenshots (SIM_SHOTS, SIM_CMDS, SIM_TAPS), director walkthroughs, then `clawd <beat>` + `screenshot` on a connected board, with the C6 no-screenshot limit. Use after any change to the meters, Clawd, the stage, layouts or LVGL drawing, when asked to screenshot the device or simulator, or before opening a firmware UI PR.
 ---
 
 # Verifying firmware UI

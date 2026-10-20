@@ -11,20 +11,14 @@ void clawd_tuning_defaults(ClawdTuning* t) {
     t->show_cooldown_ms = 15 * MIN;
     t->show_scene_ms    = 16 * SEC;    // + walk-in / outro ≈ the ~20 s show
     t->quiet_ms         = 10 * MIN;
-    t->calm_min_ms      = 3 * MIN;
-    t->calm_max_ms      = 5 * MIN;
-    t->calm_scene_ms    = 10 * SEC;
+    t->stage_rest_min_ms = 4 * SEC;
+    t->stage_rest_max_ms = 8 * SEC;
+    t->stage_scene_ms    = 16 * SEC;
     t->alert_timeout_ms = 2 * MIN;
     t->long_turn_ms     = 2 * MIN;
     t->joy_pending_ms   = 5 * MIN;
     t->react_pending_ms = 15 * SEC;   // the walk back from a lurk is ~6 s at 2.5x
-    t->blink_min_ms     = 2 * SEC;
-    t->blink_max_ms     = 6 * SEC;
-    t->peek_look_min_ms = 1600;       // then it rests, curious
-    t->peek_look_max_ms = 2400;
     t->peek_curious_ms  = 5 * MIN;
-    t->peek_double_pct  = 30;
-    t->peek_toward_pct  = 60;
     t->shows             = true;
     t->screensaver       = true;
     t->idle_acts         = true;
@@ -41,9 +35,9 @@ void clawd_tuning_fast(ClawdTuning* t) {
     t->show_cooldown_ms = 60 * SEC;
     t->show_scene_ms    = 6 * SEC;
     t->quiet_ms         = 15 * SEC;
-    t->calm_min_ms      = 8 * SEC;
-    t->calm_max_ms      = 10 * SEC;
-    t->calm_scene_ms    = 5 * SEC;
+    t->stage_rest_min_ms = 2 * SEC;
+    t->stage_rest_max_ms = 3 * SEC;
+    t->stage_scene_ms    = 5 * SEC;
     t->alert_timeout_ms = 20 * SEC;
     t->long_turn_ms     = 10 * SEC;
     t->joy_pending_ms   = 30 * SEC;
@@ -77,8 +71,8 @@ void clawd_tuning_scaled(const ClawdTuning* base, int level, ClawdTuning* out) {
     const uint16_t r = LIVELY_RATE[level];
     out->show_after_ms    = per_rate(base->show_after_ms, r);
     out->show_cooldown_ms = per_rate(base->show_cooldown_ms, r);
-    out->calm_min_ms      = per_rate(base->calm_min_ms, r);
-    out->calm_max_ms      = per_rate(base->calm_max_ms, r);
+    out->stage_rest_min_ms = per_rate(base->stage_rest_min_ms, r);
+    out->stage_rest_max_ms = per_rate(base->stage_rest_max_ms, r);
     out->long_turn_ms     = per_rate(base->long_turn_ms, r);
     out->idle_gap_pct     = (uint16_t)(base->idle_gap_pct * 1000UL / r);
     if (level == CLAWD_LIVELINESS_MAX && base->show_min_activity > 2)
@@ -252,35 +246,9 @@ PeekHold peek_hold(uint32_t up_since, uint32_t now, const ClawdTuning* t) {
     return (uint32_t)(now - up_since) >= t->peek_curious_ms ? PEEK_HOLD_DONE : PEEK_HOLD_KEEP;
 }
 
-int peek_glance_px(int tap_x, int width, int max_px) {
-    const int half = width / 2;
-    if (half <= 0) return 0;
-    int g = (tap_x - half) * max_px / half;
-    if (g > max_px)  g = max_px;
-    if (g < -max_px) g = -max_px;
-    return g;
-}
-
 // ─── Corner seat ─────────────────────────────────────────────────────────────
 int corner_seat_feet(int feet_y, int tallest_px, int max_feet, int top_margin) {
     const int need = tallest_px + top_margin;
     if (feet_y >= need) return feet_y;
     return need <= max_feet ? need : (max_feet > feet_y ? max_feet : feet_y);
-}
-
-// ─── Resting face ────────────────────────────────────────────────────────────
-FacePlan face_plan_next(ClawdRng* r, const ClawdTuning* t) {
-    FacePlan p;
-    p.gap_ms = clawd_rng_range(r, t->blink_min_ms, t->blink_max_ms);
-    const uint32_t roll = clawd_rng_next(r) % 100;
-    if (roll < 45)       p.act = FACE_BLINK;
-    else if (roll < 57)  p.act = FACE_DOUBLE_BLINK;     // ~1 in 5 blinks is double
-    else if (roll < 79)  p.act = FACE_GLANCE_LEFT;
-    else                 p.act = FACE_GLANCE_RIGHT;
-    return p;
-}
-
-int face_glance_px(FaceAct act, int glance_px, int tap_g, ClawdRng* r, const ClawdTuning* t) {
-    if (tap_g != 0 && clawd_rng_chance(r, t->peek_toward_pct)) return tap_g;
-    return act == FACE_GLANCE_LEFT ? -glance_px : glance_px;
 }

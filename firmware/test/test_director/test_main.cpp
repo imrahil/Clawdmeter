@@ -1,6 +1,7 @@
 // The director against timed stand-ins for its actors (fake_actors.cpp):
 // whatever the situation does, there is never more than one Clawd on screen
-// (corner sprite, full-size sprite, performer, face).
+// (corner sprite, full-size sprite, performer), and the stage is respected:
+// the performer only ever appears on it, nothing else ever walks over it.
 //   pio test -d firmware -e native -f test_director
 #include <unity.h>
 #include "fake_world.h"
@@ -16,12 +17,15 @@ static char     broke_what[96];
 static void check_one_clawd(void) {
     const OnScreen s = fake_on_screen();
     // A page covers the cards: only the corner Clawd may be up (pages.h).
-    const bool page_ok = !covered || (!s.big && !s.performer && !s.face);
-    if (broke || (fake_clawds(s) <= 1 && page_ok)) return;
+    const bool page_ok = !covered || (!s.big && !s.performer && !s.stage);
+    // The performer is on the stage only, never over the meters; the corner
+    // and the big Clawd never move under or over it.
+    const bool stage_ok = (!s.performer || s.stage) && (!s.stage || (!s.corner && !s.big));
+    if (broke || (fake_clawds(s) <= 1 && page_ok && stage_ok)) return;
     broke = true;
     broke_at = fake_now_ms;
-    snprintf(broke_what, sizeof(broke_what), "beat %s:%u corner %d big %d performer %d face %d covered %d attn %d",
-             director_beat_name(), step, s.corner, s.big, s.performer, s.face, covered, attention_on);
+    snprintf(broke_what, sizeof(broke_what), "beat %s:%u corner %d big %d performer %d stage %d covered %d attn %d",
+             director_beat_name(), step, s.corner, s.big, s.performer, s.stage, covered, attention_on);
 }
 
 // Which beats a run went through, so a fuzz pass can't be vacuous.
@@ -38,10 +42,10 @@ static void run_for(uint32_t ms) {
     }
 }
 
-// Without the full-size sprite nothing performs, so nothing runs home.
+// Without the performer a tap is only the corner's hop: no peek.
 static void assert_every_beat_seen(bool has_big) {
     for (int b = 0; b < BEAT_COUNT; b++)
-        if (has_big || b != B_RUN_HOME) TEST_ASSERT_TRUE_MESSAGE(seen[b], BEAT_NAMES[b]);
+        if (has_big || b != B_PEEK) TEST_ASSERT_TRUE_MESSAGE(seen[b], BEAT_NAMES[b]);
 }
 
 static void assert_one_clawd(void) {
@@ -80,13 +84,57 @@ void setUp(void) {
 }
 void tearDown(void) {}
 
-// The screensaver rests, then dips into a calm scene. The face must be off
-// screen before the performer appears, and he must be gone before it rises.
-static void test_screensaver_calm_dip_keeps_one_clawd(void) {
+// The screensaver: he walks off, the stage rises, and he performs scene
+// after scene on it. A tap brings him off and the meters back.
+static void test_screensaver_performs_on_the_stage(void) {
     fresh_director();
     run_for(15 * 1000 + 2000);                    // quiet: the screensaver starts
     TEST_ASSERT_EQUAL_STRING("screensaver", director_beat_name());
-    run_for(60 * 1000);                           // rest, dip, rest, dip, ...
+    bool performed = false;
+    for (int t = 0; t < 60 * 1000; t += TICK_MS) {   // scene, rest, scene, ...
+        run_for(TICK_MS);
+        if (fake_on_screen().performer && fake_stage_up()) performed = true;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(performed, "he never performed on the stage");
+    TEST_ASSERT_EQUAL_STRING("screensaver", director_beat_name());
+    director_tap(200);
+    run_for(8000);
+    TEST_ASSERT_EQUAL_STRING("home", director_beat_name());
+    TEST_ASSERT_FALSE(fake_on_screen().stage);
+    TEST_ASSERT_TRUE(fake_on_screen().corner);       // back in his corner (maybe idling already)
+    assert_one_clawd();
+}
+
+// A tap on the meters: he hops, ducks out, the stage rises and he waves and
+// performs on it; a tap there brings the meters back.
+static void test_peek_is_the_stage(void) {
+    fresh_director();
+    director_tap(300);
+    run_for(4000);
+    TEST_ASSERT_EQUAL_STRING("peek", director_beat_name());
+    TEST_ASSERT_TRUE(fake_stage_up());
+    TEST_ASSERT_TRUE(fake_on_screen().performer);
+    director_tap(300);
+    run_for(8000);
+    TEST_ASSERT_EQUAL_STRING("home", director_beat_name());
+    TEST_ASSERT_FALSE(fake_on_screen().stage);
+    world.activity = 0;
+    assert_one_clawd();
+}
+
+// An earned show runs on the stage, and the meters come back after it.
+static void test_show_is_on_the_stage(void) {
+    fresh_director();
+    TEST_ASSERT_TRUE(director_debug("show"));
+    world.activity = 1;                              // you're working: no screensaver after it
+    bool staged = false;
+    for (int t = 0; t < 30 * 1000; t += TICK_MS) {
+        run_for(TICK_MS);
+        if (fake_on_screen().performer && fake_stage_up()) staged = true;
+    }
+    TEST_ASSERT_TRUE(staged);
+    TEST_ASSERT_EQUAL_STRING("home", director_beat_name());
+    TEST_ASSERT_FALSE(fake_on_screen().stage);
     assert_one_clawd();
 }
 
@@ -367,7 +415,9 @@ static void test_fuzz_one_clawd_at_every_attention_animation(void) {
 
 int main(int, char**) {
     UNITY_BEGIN();
-    RUN_TEST(test_screensaver_calm_dip_keeps_one_clawd);
+    RUN_TEST(test_screensaver_performs_on_the_stage);
+    RUN_TEST(test_peek_is_the_stage);
+    RUN_TEST(test_show_is_on_the_stage);
     RUN_TEST(test_fuzz_one_clawd_with_full_size_sprite);
     RUN_TEST(test_fuzz_one_clawd_without_full_size_sprite);
     RUN_TEST(test_no_nonsense_sits_still_through_everything_but_taps);

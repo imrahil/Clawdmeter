@@ -290,6 +290,7 @@ void performer_init(lv_obj_t* parent, int feet_y) {
     const SplashGeometry geo = splash_compute_geometry(c.width, c.height, true);
     cell = geo.cell;
     dim = geo.canvas_dim;
+    if (feet_y < 0) feet_y = (c.height - dim) / 2 + (ANCHOR_Y + CLAWD_ART_H) * cell;   // centred
     const size_t bytes = (size_t)dim * dim * 3;
     // PSRAM only: without it there's no room for a screen-sized sprite, and
     // the director plays performances as corner acts.

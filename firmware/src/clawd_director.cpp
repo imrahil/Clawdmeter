@@ -3,7 +3,7 @@
 #include "clawd_anim.h"
 #include "mascot.h"
 #include "performer.h"
-#include "face.h"
+#include "stage.h"
 #include "ui.h"
 #include "idle.h"
 #include "minimal_mode.h"
@@ -16,30 +16,28 @@
 
 // ─── Beats ───────────────────────────────────────────────────────────────────
 // Each beat is a short script of steps. A step issues commands to the actors
-// (corner + full-size sprite, performer, face) and the next step runs once
-// they have all settled and any explicit pause has passed. Interruptions
-// (tap, prompt, attention) jump to a transition beat that gets back to the
-// meters without a hard cut.
+// (corner + full-size sprite, performer, the stage curtain) and the next step
+// runs once they have all settled and any explicit pause has passed.
+// Interruptions (tap, prompt, attention) jump to a transition beat that gets
+// back to the meters without a hard cut.
 enum Beat {
     B_HOME,          // meters, corner Clawd idling on his own
     B_CORNER,        // a commanded corner act (notice, wave, joy) or walk home
-    B_SHOW,          // notice → walks off → performs on the meters → home
-    B_SCREENSAVER,   // walk off → face rests, dips into calm performances
-    B_FACE_HOME,     // face drops into the meters, he hurries to his seat
-    B_RUN_HOME,      // the performance stops, he runs off, the corner walks home
+    B_SHOW,          // notice → walks off → the stage rises, he performs → home
+    B_SCREENSAVER,   // walk off → the stage rises, he performs scene after scene
+    B_STAGE_HOME,    // he runs off the stage, it drops, the corner walks home
     B_ATTENTION,     // the big Clawd fetches you
-    B_PEEK,          // a tap on the meters: hop, duck out, the face comes up curious for a while
+    B_PEEK,          // a tap on the meters: hop, duck out, the stage for a while
 };
 static const char* const BEAT_NAMES[] = {
-    "home", "corner", "show", "screensaver", "face-home", "run-home", "attention", "peek",
+    "home", "corner", "show", "screensaver", "stage-home", "attention", "peek",
 };
 
 static Beat     beat = B_HOME;
 static bool     covered = false;      // a page is over the meters (director_set_covered)
 static uint8_t  step = 0;
 static uint32_t wait_until = 0;
-static bool     performing = false;   // he's out as the performer on the meters
-static bool     notice_wake = false;  // B_FACE_HOME: blink first (he noticed you)
+static bool     performing = false;   // he's out as the performer on the stage
 
 // Attention
 static bool     attention_on = false;
@@ -71,8 +69,7 @@ static bool        minimal = false;
 static ClawdRng    rng;
 
 // A tap on the meters (the aquarium)
-static int         peek_x = 0;                // where the peek's tap landed
-static uint32_t    peek_up_at = 0;            // the peek's face started rising
+static uint32_t    peek_up_at = 0;            // the peek's stage started rising
 static lv_indev_t* touch_indev = NULL;
 
 static uint32_t now_ms(void) { return millis(); }
@@ -96,14 +93,14 @@ static void next_step(uint32_t pause_ms = 0) {
 }
 
 static bool settled(uint32_t now) {
-    return (int32_t)(now - wait_until) >= 0 && !face_moving() && !performer_busy() &&
+    return (int32_t)(now - wait_until) >= 0 && !stage_moving() && !performer_busy() &&
            !mascot_busy();
 }
 
 static void engage(void) { last_engagement = now_ms(); }
 
 // The performer walks on from the left edge, where the corner Clawd just
-// left (one Clawd: only once he's away and no face is up).
+// left (one Clawd: only once he's away), onto the risen stage.
 static void perform_enter(uint16_t speed_pct) {
     performer_place_offstage(PERFORMER_LEFT);
     performer_walk_home(speed_pct);
@@ -138,15 +135,11 @@ static void react(const char* anim, uint8_t times) {
 }
 
 // "Show me the meters": the fastest no-cut path from wherever we are.
-static void to_meters(bool noticed) {
-    if (beat == B_FACE_HOME || beat == B_RUN_HOME) return;   // already on the way
-    face_set_resting(false);
-    if (face_visible()) {
-        notice_wake = noticed;
-        go(B_FACE_HOME);
-    } else if (performing) {
-        go(B_RUN_HOME);
-    } else if (beat == B_SHOW || beat == B_SCREENSAVER) {
+static void to_meters(void) {
+    if (beat == B_STAGE_HOME) return;     // already on the way
+    if (stage_visible() || performing) {
+        go(B_STAGE_HOME);
+    } else if (beat == B_SHOW || beat == B_SCREENSAVER || beat == B_PEEK) {
         // Still on the meters (pointing / walking off): turn around.
         if (attention_on) { go(B_ATTENTION); return; }
         mascot_return(-1, 150);
@@ -200,15 +193,10 @@ void director_alert(const char* message) {
     if (attention_on) return;                 // refresh text + timers only
     attention_on = true;
     if (beat == B_ATTENTION) { step = 0; return; }
-    // Attention never waits: interrupt whatever is on.
-    if (face_visible() || performing) {
-        face_set_resting(false);
-        notice_wake = false;
-        if (face_visible()) go(B_FACE_HOME);
-        else                go(B_RUN_HOME);
-    } else {
-        go(B_ATTENTION);
-    }
+    // Attention never waits: interrupt whatever is on. The big Clawd walks
+    // on over the meters, so the stage comes down first.
+    if (stage_visible() || performing) go(B_STAGE_HOME);
+    else                               go(B_ATTENTION);
 }
 
 void director_alert_clear(void) { end_attention(ATTN_END_CLEAR); }
@@ -221,24 +209,28 @@ bool director_take_dismissed(void) {
 
 // ─── Inputs ──────────────────────────────────────────────────────────────────
 // Peek speeds: the hop and the duck-out are the acknowledgement, not the
-// point, so they're quick and the face isn't kept waiting.
+// point, so they're quick and the stage isn't kept waiting.
 #define PEEK_HOP_PCT    250
 #define PEEK_LEAVE_PCT  500
 
-// A tap while he's on the meters: tapping the aquarium always brings the face
-// up (clawd_tap_react). Seated, he hops first (the act opens on its crouch, so
-// he reacts on the next frame); otherwise he heads straight out.
+// A tap while he's on the meters: tapping the aquarium always brings him out
+// on the stage (clawd_tap_react). Seated, he hops first (the act opens on its
+// crouch, so he reacts on the next frame); otherwise he heads straight out.
+// Without the performer there's no stage to go to: the hop is all.
 static void tap_home(int x) {
     TapInput in;
     in.on_meters = beat == B_HOME || beat == B_CORNER;
     in.minimal = minimal;
     in.corner = mascot_free() ? CORNER_FREE : mascot_out() ? CORNER_OUT : CORNER_BUSY;
     TapReact r = clawd_tap_react(&in);
+    if (r != TAP_NONE && !performer_available()) {
+        if (mascot_act("jumping", 1, true, PEEK_HOP_PCT)) go(B_CORNER);
+        r = TAP_NONE;
+    }
     if (r == TAP_PEEK_HOP && !mascot_act("jumping", 1, true, PEEK_HOP_PCT)) r = TAP_PEEK;
     if (r == TAP_PEEK) mascot_leave(PEEK_LEAVE_PCT);
     if (r != TAP_NONE) {
-        react_anim = NULL;               // he's off to the glass; a queued corner reaction is moot
-        peek_x = x;
+        react_anim = NULL;               // he's off to the stage; a queued corner reaction is moot
         go(B_PEEK);
     }
     Serial.printf("[%lu] director: tap at x %d -> %s\n", (unsigned long)now_ms(), x,
@@ -257,16 +249,16 @@ void director_tap(int x) {
         return;
     }
     if (beat == B_PEEK) {
-        // The face is up (or coming up) looking at you: he blinks and drops
-        // right away. Before it shows (hop, ducking out) the tap is
-        // absorbed: nothing queues.
-        const bool drop = face_visible();
-        if (drop) to_meters(true);
+        // The stage is up (or coming up): he runs off and it drops right
+        // away. Before it shows (hop, ducking out) the tap is absorbed:
+        // nothing queues.
+        const bool drop = stage_visible();
+        if (drop) to_meters();
         Serial.printf("[%lu] director: tap at x %d -> %s\n", (unsigned long)now_ms(), x,
                       drop ? "peek over" : "absorbed");
         return;
     }
-    to_meters(false);
+    to_meters();
 }
 
 void director_set_pairing_touch(bool on) { pairing_touch = on; }
@@ -284,7 +276,7 @@ void director_set_covered(bool on) {
     // it, nothing full size.
     react_anim = NULL;
     resume_screensaver = false;
-    face_hide_now();
+    stage_hide_now();
     if (performing) {
         performer_place_offstage(PERFORMER_LEFT);
         performing = false;
@@ -310,7 +302,7 @@ bool director_button(bool main_button) {
         return true;
     }
     resume_screensaver = false;
-    if (beat == B_SCREENSAVER) to_meters(false);
+    if (beat == B_SCREENSAVER) to_meters();
     return false;
 }
 
@@ -323,7 +315,7 @@ void director_set_liveliness(int level) {
     const ClawdTuning& t = clawd_tuning();
     if (!t.reactions) { react_anim = NULL; joy_pending = false; }
     if (!t.screensaver) resume_screensaver = false;
-    if ((beat == B_SHOW && !t.shows) || (beat == B_SCREENSAVER && !t.screensaver)) to_meters(false);
+    if ((beat == B_SHOW && !t.shows) || (beat == B_SCREENSAVER && !t.screensaver)) to_meters();
     mascot_autonomy(beat == B_HOME && !minimal && !covered && t.idle_acts);
 }
 
@@ -342,7 +334,7 @@ void director_on_payload(const UsageData* d, const SignalsUpdate* sig) {
     if (!sig->replay) {
         if (have_pct && d->session_pct > last_pct + 0.01f) {
             engage();
-            if (beat == B_SCREENSAVER) to_meters(true);
+            if (beat == B_SCREENSAVER) to_meters();
         }
         have_pct = true;
         last_pct = d->session_pct;
@@ -367,7 +359,7 @@ void director_on_payload(const UsageData* d, const SignalsUpdate* sig) {
         if (sig->event == 'p' || sig->event == 'b') {
             resume_screensaver = false;       // you're back
             if (beat == B_SCREENSAVER) {
-                to_meters(true);              // he notices, the face drops
+                to_meters();                  // he notices: off the stage, back to the meters
             } else {
                 // Anticipation: he turns and points before anything else.
                 react("pointing", 1);
@@ -383,7 +375,7 @@ static void apply_minimal(bool on) {
     minimal = on;
     react_anim = NULL;                        // a queued corner reaction is moot now
     resume_screensaver = false;
-    face_hide_now();
+    stage_hide_now();
     performer_place_offstage(PERFORMER_LEFT);
     performing = false;
     mascot_set_minimal(on);
@@ -398,7 +390,6 @@ static void apply_minimal(bool on) {
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 void director_init(void) {
-    face_init();
     show_gate_clear(&show_gate);
     turn_clear(&turn);
     clawd_rng_seed(&rng, now_ms() ^ 0xD1EC7u);
@@ -411,7 +402,7 @@ void director_init(void) {
     if (touch_indev) lv_indev_add_event_cb(touch_indev, indev_cb, LV_EVENT_PRESSED, NULL);
 }
 
-DirectorRoom director_room(void) { return face_visible() ? ROOM_FACE : ROOM_METERS; }
+DirectorRoom director_room(void) { return stage_visible() ? ROOM_STAGE : ROOM_METERS; }
 
 const char* director_beat_name(void) { return BEAT_NAMES[beat]; }
 
@@ -450,26 +441,34 @@ static void run_show(uint32_t now) {
         mascot_leave(150);
         next_step();
         break;
-    case 2:  // gone: he walks back on, full size, in front of the meters
+    case 2:  // gone: the stage rises over the meters
         if (!mascot_away()) return;
+        stage_rise();
+        next_step();
+        break;
+    case 3:  // he walks back on, full size
         perform_enter(150);
         next_step();
         break;
-    case 3:
+    case 4:
         performer_perform_group(g, t.show_scene_ms, false);
         next_step();
         break;
-    case 4:  // show over: a wave
+    case 5:  // show over: a wave
         performer_perform(clawd_anim_index("waving"), 0);
         next_step();
         break;
-    case 5:
+    case 6:
         performer_walk_off(PERFORMER_LEFT, 150);
         next_step();
         break;
-    case 6:  // off the edge: the corner Clawd comes back in from there
+    case 7:  // off the edge: the stage drops
         if (performer_visible()) return;
         performing = false;
+        stage_drop();
+        next_step();
+        break;
+    case 8:  // the meters are back: the corner Clawd comes in from the left
         mascot_return(-1, 100);
         next_step();
         break;
@@ -479,107 +478,79 @@ static void run_show(uint32_t now) {
     }
 }
 
-static uint32_t calm_at = 0;
+// On the stage: scene after scene from his current mood (as v1's splash
+// did), standing in the idle pose for a while between them. Steps from
+// `first` on; the caller has him walked on already.
+static void stage_loop(uint32_t now, uint8_t first) {
+    (void)now;
+    const ClawdTuning& t = clawd_tuning();
+    if (step == first) {
+        int g = usage_rate_group();
+        if (g < 0 || g > 3) g = 0;
+        performer_perform_group(g, t.stage_scene_ms, false);
+        next_step();
+    } else if (step == first + 1) {
+        next_step(clawd_rng_range(&rng, t.stage_rest_min_ms, t.stage_rest_max_ms));
+    } else {
+        step = first;
+    }
+}
 
 static void run_screensaver(uint32_t now) {
-    const ClawdTuning& t = clawd_tuning();
-    if (!ui_meters_live()) { to_meters(false); return; }   // link dropped: show the hint
-    if (step == 3) {
-        // Resting: dip into a calm performance now and then (also breaks up
-        // the flat orange field for burn-in). One Clawd: the face drops onto
-        // the empty meters, he walks on only once it's gone, and walks off
-        // before it comes back.
-        if ((int32_t)(now - calm_at) < 0 || face_busy()) return;
-        face_set_resting(false);
-        next_step(200);
-        return;
-    }
+    if (!ui_meters_live()) { to_meters(); return; }   // link dropped: show the hint
     if (step == 0) {
         // Gets up to check on you, from whatever he was doing: an idle act
-        // ends, a walk heads for the nearest edge, a peek finishes first.
+        // ends, a walk heads for the nearest edge, a lurk trip finishes first.
         mascot_leave(100);
         next_step();
         return;
     }
     if (!settled(now)) return;
     switch (step) {
-    case 1:
+    case 1:  // gone: the stage rises
         if (!mascot_away()) return;
-        face_rise();
+        stage_rise();
         next_step();
         break;
-    case 2:
-        face_set_resting(true);
-        calm_at = now + clawd_rng_range(&rng, t.calm_min_ms, t.calm_max_ms);
-        step = 3;
-        break;
-    case 4:
-        face_drop();
-        next_step();
-        break;
-    case 5:  // the face is gone: he strolls on (corner-only: back to his seat)
-        if (performer_available()) perform_enter(100);
-        else                       mascot_return(-1, 100);
-        next_step();
-        break;
-    case 6:  // a calm scene (corner-only: he just sits a while)
-        if (performer_available()) { performer_perform_group(0, t.calm_scene_ms, true); next_step(); }
-        else                       next_step(t.calm_scene_ms);
-        break;
-    case 7:
-        if (performing) performer_walk_off(PERFORMER_LEFT, 100);
-        else            mascot_leave(100);
-        next_step();
-        break;
-    case 8:  // off screen: the face comes back up
-        if (performer_visible() || !mascot_away()) return;
-        performing = false;
-        face_rise();
-        step = 2;
-        break;
-    }
-}
-
-static void run_face_home(uint32_t now) {
-    switch (step) {
-    case 0:
-        if (notice_wake && !face_moving()) {
-            face_blink(false);              // noticed you: a blink, then down
-            next_step(260);
-        } else {
-            next_step();
-        }
-        break;
-    case 1:
-        if ((int32_t)(now - wait_until) < 0) return;
-        mascot_place_away();
-        face_drop();
+    case 2:  // he strolls on (no performer: the black screen rests empty)
+        if (!performer_available()) return;
+        perform_enter(100);
         next_step();
         break;
     default:
-        if (!settled(now)) return;
-        arrive_meters();
+        stage_loop(now, 3);
         break;
     }
 }
 
-// The performance stops for you: the scene releases to the idle pose on the
-// spot, a beat, and he runs off left, picking up speed; the corner Clawd
-// walks home from there.
-static void run_run_home(uint32_t now) {
+// Off the stage, back to the meters: the scene releases to the idle pose on
+// the spot, a beat, and he runs off left, picking up speed; the stage drops
+// and the corner Clawd walks home from there.
+static void run_stage_home(uint32_t now) {
     switch (step) {
-    case 0:  // the scene releases to the idle pose, right now
-        performer_release();
-        next_step(200);             // a beat: he registers it (anticipation)
+    case 0:
+        if (performing) {
+            performer_release();          // the scene stops, right now
+            next_step(200);               // a beat: he registers it (anticipation)
+        } else {
+            step = 2;
+            wait_until = now;
+        }
         break;
     case 1:  // then gets going: 1.5x ramping to 3x
         if (!settled(now)) return;
         performer_run_off(PERFORMER_LEFT, 150, 300, 400);
         next_step();
         break;
-    default:
+    case 2:  // off: the stage drops
         if (!settled(now) || performer_visible()) return;
         performing = false;
+        mascot_place_away();
+        stage_drop();
+        next_step();
+        break;
+    default:
+        if (!settled(now)) return;
         arrive_meters();
         break;
     }
@@ -618,42 +589,39 @@ static void run_attention(uint32_t now) {
 
 // A tap on the meters (tap_home already started the startled hop, or sent
 // him out). One Clawd: he ducks out through the nearest edge (his seat is by
-// the left edge, so it's a few steps) before the face comes up. The face then
-// stays, resting and curious, for peek_curious_ms, or until you tap it
-// (director_tap → the acknowledging blink, the drop, and he walks back to his
-// seat).
+// the left edge, so it's a few steps) before the stage rises; then he walks
+// on and waves (what do you want?) and performs as on the screensaver, for
+// peek_curious_ms or until you tap (director_tap → he runs off, the stage
+// drops, he walks back to his seat).
 static void run_peek(uint32_t now) {
-    if (!settled(now)) return;
     const ClawdTuning& t = clawd_tuning();
+    if (step >= 3 && peek_hold(peek_up_at, now, &t) == PEEK_HOLD_DONE) {
+        Serial.printf("[%lu] director: peek over (curiosity)\n", (unsigned long)now);
+        to_meters();
+        return;
+    }
+    if (!settled(now)) return;
     switch (step) {
     case 0:  // the hop has landed: he ducks out, quick
         mascot_leave(PEEK_LEAVE_PCT);
         next_step();
         break;
-    case 1:  // gone: the face rises, curious about the tap
+    case 1:  // gone: the stage rises
         if (!mascot_away()) return;
-        face_rise_toward(peek_x);
+        stage_rise();
         peek_up_at = now;
         next_step();
         break;
-    case 2:  // up: he looks where you tapped
-        face_look_at_x(peek_x, clawd_rng_range(&rng, t.peek_look_min_ms, t.peek_look_max_ms));
-        next_step(320);
-        break;
-    case 3:  // ...and blinks at it (sometimes twice)
-        face_blink(clawd_rng_chance(&rng, t.peek_double_pct));
+    case 2:  // he walks on
+        perform_enter(150);
         next_step();
         break;
-    case 4:  // the look comes back to you, and he stays: resting on the glass
-        if (face_busy()) return;
-        face_set_resting(true);
+    case 3:  // a wave hello
+        performer_perform(clawd_anim_index("waving"), 0);
         next_step();
         break;
-    default:  // curious for a while, then back to his seat on his own
-        if (peek_hold(peek_up_at, now, &t) == PEEK_HOLD_DONE) {
-            Serial.printf("[%lu] director: peek over (curiosity)\n", (unsigned long)now);
-            to_meters(false);
-        }
+    default:
+        stage_loop(now, 4);
         break;
     }
 }
@@ -693,15 +661,14 @@ void director_tick(void) {
     show_gate_update(&show_gate, now, activity, &clawd_tuning());
     // Tool calls flowing (PostToolUse) are hook events too: you're working.
     if (activity > 0) last_engagement = now;
-    face_tick();
+    stage_tick();
 
     switch (beat) {
     case B_HOME:        run_home(now); break;
     case B_CORNER:      run_corner(now); break;
     case B_SHOW:        run_show(now); break;
     case B_SCREENSAVER: run_screensaver(now); break;
-    case B_FACE_HOME:   run_face_home(now); break;
-    case B_RUN_HOME:    run_run_home(now); break;
+    case B_STAGE_HOME:  run_stage_home(now); break;
     case B_ATTENTION:   run_attention(now); break;
     case B_PEEK:        run_peek(now); break;
     }
@@ -714,7 +681,7 @@ bool director_debug(const char* name) {
         engage();
         if (attention_on) { end_attention(ATTN_END_TAP); return true; }
         resume_screensaver = false;
-        if (!minimal) to_meters(false);
+        if (!minimal) to_meters();
         return true;
     }
     if (covered) return false;            // a page is up: close it first (pages.h)
