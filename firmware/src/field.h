@@ -4,16 +4,16 @@
 #include <lvgl.h>
 
 // A flat-colour shape on an overlay layer that redraws only what changes: a
-// body rectangle plus a couple of small extra rectangles (the face's arms).
+// body rectangle plus a couple of small extra rectangles.
 //
-// The face is a big solid rectangle that slides up and down the screen.
-// As a plain LVGL object, every move invalidates its whole old
-// and new area (for the rising face that's most of the screen, every frame),
-// and each frame becomes a near full-screen render + panel flush. A field is
-// instead a full-screen object that never moves: it draws its rectangle in
-// LV_EVENT_DRAW_MAIN, and moving the rectangle invalidates only the strips
-// that changed colour (old XOR new). Children (the face's eyes) still work
-// like any LVGL child.
+// The stage curtain (stage.h) is a big solid rectangle that slides up and
+// down the screen. As a plain LVGL object, every move invalidates its whole
+// old and new area (for the rising curtain that's most of the screen, every
+// frame), and each frame becomes a near full-screen render + panel flush. A
+// field is instead a full-screen object that never moves: it draws its
+// rectangle in LV_EVENT_DRAW_MAIN, and moving the rectangle invalidates only
+// the strips that changed colour (old XOR new). Children still work like
+// any LVGL child.
 //
 // Resting state is LV_OBJ_FLAG_HIDDEN with an empty rectangle. Showing,
 // hiding or restacking the full-screen object would invalidate the whole

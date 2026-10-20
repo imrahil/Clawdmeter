@@ -52,7 +52,7 @@ void         clawd_tuning_fast(ClawdTuning* t);   // sim walkthrough timings
 //      unchanged.
 //   3  the base timings as they are.
 //   5  shows earned by a shorter, lighter stretch (activity 2 counts) with
-//      shorter cooldowns, calm dips and idle acts far more often, the wave
+//      shorter cooldowns, shorter rests between stage scenes and idle acts far more often, the wave
 //      for shorter turns.
 // 2 and 4 sit in between: the rate-like timings divide by 0.6 / 1 / 1.8 / 3
 // for levels 2..5 (so 4 is about halfway between 3 and 5 on a log scale).
